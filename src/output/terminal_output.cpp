@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <format>
 #include <iostream>
+#include <ranges>
 
 namespace bayeselo {
 
@@ -30,4 +31,3 @@ void print_ratings(const RatingResult& result) {
 }
 
 } // namespace bayeselo
-

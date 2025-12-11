@@ -1,12 +1,16 @@
 #include "export_writer.h"
 
-#include <fstream>
 #include <format>
+#include <fstream>
+#include <stdexcept>
 
 namespace bayeselo {
 
 void write_csv(const RatingResult& result, const std::filesystem::path& path) {
     std::ofstream out(path);
+    if (!out) {
+        throw std::runtime_error("Failed to open CSV output: " + path.string());
+    }
     out << "Player,Elo,Error,Games,ScorePct,DrawPct\n";
     for (const auto& p : result.players) {
         double score_pct = p.games_played ? (p.score_sum / p.games_played) * 100.0 : 0.0;
@@ -17,6 +21,9 @@ void write_csv(const RatingResult& result, const std::filesystem::path& path) {
 
 void write_json(const RatingResult& result, const std::filesystem::path& path) {
     std::ofstream out(path);
+    if (!out) {
+        throw std::runtime_error("Failed to open JSON output: " + path.string());
+    }
     out << "{\n  \"players\": [\n";
     for (std::size_t i = 0; i < result.players.size(); ++i) {
         const auto& p = result.players[i];
@@ -42,4 +49,3 @@ void write_json(const RatingResult& result, const std::filesystem::path& path) {
 }
 
 } // namespace bayeselo
-

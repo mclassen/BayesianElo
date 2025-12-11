@@ -22,7 +22,6 @@ void ThreadPool::shutdown() {
         stopping_ = true;
     }
     cv_.notify_all();
-    cv_.notify_all();
     workers_.clear(); // jthreads join on destruction
 }
 

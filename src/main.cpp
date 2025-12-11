@@ -71,7 +71,7 @@ void print_help() {
         << "  --either-name <substr>      Require either name contains substring\n"
         << "  --exclude-name <substr>     Exclude games if either name contains substring\n"
         << "  --result <1-0|0-1|1/2-1/2>  Filter by result\n"
-        << "  --termination <value>       Filter by Termination tag (case-sensitive)\n"
+        << "  --termination <value>       Filter by Termination tag (case-insensitive)\n"
         << "  --require-complete          Skip games missing required metadata/result\n"
         << "  --skip-empty                Skip games with empty/unknown result\n"
         << "\nNotes:\n"
