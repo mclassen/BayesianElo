@@ -2,6 +2,7 @@
 #include "bayeselo/filters.h"
 #include "bayeselo/game.h"
 #include "bayeselo/rating_result.h"
+#include "version.h"
 #include "output/export_writer.h"
 #include "output/terminal_output.h"
 #include "parser/chunk_splitter.h"
@@ -9,15 +10,13 @@
 #include "rating/bayeselo_solver.h"
 #include "util/thread_pool.h"
 
-#include <filesystem>
-#include <format>
-#include <iostream>
 #include <algorithm>
-#include <latch>
+#include <atomic>
+#include <filesystem>
+#include <iostream>
 #include <mutex>
-#include <queue>
-#include <ranges>
-#include <sstream>
+#include <optional>
+#include <vector>
 
 using namespace bayeselo;
 
@@ -27,12 +26,58 @@ struct CliOptions {
     std::optional<std::filesystem::path> csv;
     std::optional<std::filesystem::path> json;
     std::size_t threads{std::thread::hardware_concurrency()};
+    std::optional<std::size_t> max_games;
+    bool keep_moves{false};
+    std::optional<std::size_t> max_bytes;
 };
 
+std::optional<std::size_t> parse_size(std::string_view text) {
+    if (text.empty()) return std::nullopt;
+    std::size_t multiplier = 1;
+    char suffix = text.back();
+    if (suffix == 'k' || suffix == 'K') multiplier = 1024;
+    else if (suffix == 'm' || suffix == 'M') multiplier = 1024ull * 1024ull;
+    else if (suffix == 'g' || suffix == 'G') multiplier = 1024ull * 1024ull * 1024ull;
+    else suffix = '\0';
+
+    std::string number_part = (suffix == '\0') ? std::string(text) : std::string(text.substr(0, text.size() - 1));
+    if (number_part.empty()) return std::nullopt;
+    return static_cast<std::size_t>(std::stoull(number_part)) * multiplier;
+}
+
 void print_help() {
-    std::cout << "Bayesian Elo PGN rating tool\n";
-    std::cout << "Inspired by BayesElo by Rémi Coulom (http://www.remi-coulom.fr/Bayesian-Elo)\n";
-    std::cout << "Usage: elo_rating [options] file1.pgn file2.pgn ...\n";
+    std::cout
+        << "Bayesian Elo PGN rating tool\n"
+        << "Inspired by BayesElo by Rémi Coulom (http://www.remi-coulom.fr/Bayesian-Elo)\n"
+        << "Usage: elo_rating [options] file1.pgn file2.pgn ...\n\n"
+        << "Options:\n"
+        << "  -h, --help                  Show this help message and exit\n"
+        << "  --version                   Print version information and exit\n"
+        << "  --threads <n>               Number of worker threads (default: hardware concurrency)\n"
+        << "  --csv <path>                Write ratings table as CSV\n"
+        << "  --json <path>               Write ratings table as JSON\n"
+        << "  --max-games <n>             Stop after N accepted games\n"
+        << "  --max-size <bytes|k|m|g>    Cap approximate memory for names + pairings\n"
+        << "  --keep-moves                Retain SAN move text (otherwise dropped after ply counting)\n"
+        << "\nFilters:\n"
+        << "  --min-plies <n>             Minimum plies (half-moves)\n"
+        << "  --max-plies <n>             Maximum plies (half-moves)\n"
+        << "  --min-moves <n>             Minimum moves (converted to plies)\n"
+        << "  --max-moves <n>             Maximum moves (converted to plies)\n"
+        << "  --min-time <dur>            Minimum duration; accepts seconds or suffix h/m/s (e.g. 300, 5m, 1h)\n"
+        << "  --max-time <dur>            Maximum duration; \"300+2\" keeps the base time (300)\n"
+        << "  --white-name <substr>       Require White name contains substring\n"
+        << "  --black-name <substr>       Require Black name contains substring\n"
+        << "  --either-name <substr>      Require either name contains substring\n"
+        << "  --exclude-name <substr>     Exclude games if either name contains substring\n"
+        << "  --result <1-0|0-1|1/2-1/2>  Filter by result\n"
+        << "  --termination <value>       Filter by Termination tag (case-sensitive)\n"
+        << "  --require-complete          Skip games missing required metadata/result\n"
+        << "  --skip-empty                Skip games with empty/unknown result\n"
+        << "\nNotes:\n"
+        << "  - Provide one or more PGN files to rate. Games are filtered before rating.\n"
+        << "  - Size suffixes: k=KiB, m=MiB, g=GiB. Duration suffixes: s, m, h.\n"
+        << "  - When --keep-moves is omitted, compact pairings are used for lower memory.\n";
 }
 
 CliOptions parse_cli(int argc, char** argv) {
@@ -41,6 +86,10 @@ CliOptions parse_cli(int argc, char** argv) {
         std::string arg = argv[i];
         if (arg == "--help" || arg == "-h") {
             print_help();
+            std::exit(0);
+        } else if (arg == "--version") {
+            std::cout << "Bayesian Elo PGN CLI " << BAYESELO_VERSION_STRING
+                      << " (" << BAYESELO_GIT_HASH << ")\n";
             std::exit(0);
         } else if (arg == "--threads" && i + 1 < argc) {
             options.threads = static_cast<std::size_t>(std::stoul(argv[++i]));
@@ -76,6 +125,12 @@ CliOptions parse_cli(int argc, char** argv) {
             options.csv = argv[++i];
         } else if (arg == "--json" && i + 1 < argc) {
             options.json = argv[++i];
+        } else if (arg == "--max-games" && i + 1 < argc) {
+            options.max_games = static_cast<std::size_t>(std::stoull(argv[++i]));
+        } else if (arg == "--keep-moves") {
+            options.keep_moves = true;
+        } else if (arg == "--max-size" && i + 1 < argc) {
+            options.max_bytes = parse_size(argv[++i]);
         } else if (!arg.empty() && arg.front() != '-') {
             options.files.push_back(arg);
         }
@@ -90,39 +145,122 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    std::vector<ChunkRange> chunks;
+    chunks.reserve(options.files.size());
+    for (const auto& file : options.files) {
+        auto ranges = split_pgn_file(file, 1 << 20);
+        chunks.insert(chunks.end(), ranges.begin(), ranges.end());
+    }
+
     ThreadPool pool(options.threads);
     std::mutex games_mutex;
     std::vector<Game> games;
-    std::latch latch(options.files.size());
+    std::atomic_size_t accepted{0};
+    std::atomic_bool max_reached{false};
+    std::vector<Pairing> pairings;
+    std::vector<std::string> player_names;
+    std::unordered_map<std::string, std::size_t> name_index;
+    std::atomic_size_t estimated_bytes{0};
+    const bool use_pairings = !options.keep_moves;
+    constexpr std::size_t pairing_bytes = sizeof(Pairing);
+    constexpr std::size_t name_overhead = sizeof(std::string);
 
-    for (const auto& file : options.files) {
-        auto chunks = split_pgn_file(file, 1 << 20);
-        if (chunks.empty()) {
-            latch.count_down();
-            continue;
-        }
-        for (const auto& chunk : chunks) {
-            pool.enqueue([&, chunk]() {
-                auto parsed = parse_pgn_chunk(chunk.file, chunk.start_offset, chunk.end_offset);
+    for (const auto& chunk : chunks) {
+        pool.enqueue([&, chunk]() {
+            auto parsed = parse_pgn_chunk(chunk.file, chunk.start_offset, chunk.end_offset);
+            std::vector<Game> local_games;
+            std::vector<Pairing> local_pairs;
+            local_games.reserve(parsed.size());
+            local_pairs.reserve(parsed.size());
+
+            for (auto& g : parsed) {
+                if (!options.keep_moves) {
+                    g.moves.clear();
+                    g.moves.shrink_to_fit();
+                }
+                if (!passes_filters(g, options.filters)) continue;
+
+                if (options.max_games && accepted.load(std::memory_order_relaxed) >= *options.max_games) {
+                    max_reached.store(true, std::memory_order_relaxed);
+                    break;
+                }
+
+                if (use_pairings) {
+                    if (g.result.outcome == GameResult::Outcome::Unknown) continue;
+                    std::size_t w_idx, b_idx;
+                    {
+                        std::scoped_lock lock(games_mutex);
+                        auto itw = name_index.find(g.meta.white);
+                        if (itw == name_index.end()) {
+                            w_idx = player_names.size();
+                            name_index[g.meta.white] = w_idx;
+                            player_names.push_back(g.meta.white);
+                            estimated_bytes.fetch_add(g.meta.white.size() + name_overhead, std::memory_order_relaxed);
+                        } else {
+                            w_idx = itw->second;
+                        }
+                        auto itb = name_index.find(g.meta.black);
+                        if (itb == name_index.end()) {
+                            b_idx = player_names.size();
+                            name_index[g.meta.black] = b_idx;
+                            player_names.push_back(g.meta.black);
+                            estimated_bytes.fetch_add(g.meta.black.size() + name_overhead, std::memory_order_relaxed);
+                        } else {
+                            b_idx = itb->second;
+                        }
+                    }
+                    double score = 0.5;
+                    if (g.result.outcome == GameResult::Outcome::WhiteWin) score = 1.0;
+                    else if (g.result.outcome == GameResult::Outcome::BlackWin) score = 0.0;
+
+                    if (options.max_bytes) {
+                        auto current = estimated_bytes.load(std::memory_order_relaxed);
+                        if (current + pairing_bytes > *options.max_bytes) {
+                            max_reached.store(true, std::memory_order_relaxed);
+                            break;
+                        }
+                        estimated_bytes.fetch_add(pairing_bytes, std::memory_order_relaxed);
+                    }
+
+                    local_pairs.push_back(Pairing{w_idx, b_idx, score});
+                } else {
+                    local_games.push_back(std::move(g));
+                }
+                accepted.fetch_add(1, std::memory_order_relaxed);
+            }
+
+            if (!local_games.empty() || !local_pairs.empty()) {
                 std::scoped_lock lock(games_mutex);
-                games.insert(games.end(), parsed.begin(), parsed.end());
-            });
-        }
-        latch.count_down();
+                if (!local_games.empty()) {
+                    games.insert(games.end(),
+                                 std::make_move_iterator(local_games.begin()),
+                                 std::make_move_iterator(local_games.end()));
+                }
+                if (!local_pairs.empty()) {
+                    pairings.insert(pairings.end(),
+                                    std::make_move_iterator(local_pairs.begin()),
+                                    std::make_move_iterator(local_pairs.end()));
+                }
+            }
+        });
     }
 
-    latch.wait();
+    pool.wait_for_completion();
     pool.shutdown();
 
-    std::vector<Game> filtered;
-    std::ranges::copy_if(games, std::back_inserter(filtered), [&](const Game& g) { return passes_filters(g, options.filters); });
-
     BayesEloSolver solver;
-    auto ratings = solver.solve(filtered);
+    RatingResult ratings;
+    if (use_pairings) {
+        ratings = solver.solve(pairings, player_names);
+    } else {
+        ratings = solver.solve(games);
+    }
 
     print_ratings(ratings);
+    if (max_reached.load(std::memory_order_relaxed)) {
+        std::cerr << "Reached limit (--max-games or --max-bytes); remaining parsed games were discarded.\n";
+    }
     if (options.csv) write_csv(ratings, *options.csv);
     if (options.json) write_json(ratings, *options.json);
     return 0;
 }
-

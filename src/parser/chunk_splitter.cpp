@@ -1,6 +1,7 @@
 #include "chunk_splitter.h"
 
 #include <fstream>
+#include <string>
 #include <vector>
 
 namespace bayeselo {
@@ -28,6 +29,10 @@ std::vector<ChunkRange> split_pgn_file(const std::filesystem::path& file, std::s
             }
             tentative_end = static_cast<std::size_t>(in.tellg());
         }
+        if (tentative_end == std::string::npos) {
+            tentative_end = total;
+        }
+        tentative_end = std::min(tentative_end, total);
         ranges.push_back(ChunkRange{file, current_start, tentative_end});
         current_start = tentative_end;
     }
@@ -36,4 +41,3 @@ std::vector<ChunkRange> split_pgn_file(const std::filesystem::path& file, std::s
 }
 
 } // namespace bayeselo
-

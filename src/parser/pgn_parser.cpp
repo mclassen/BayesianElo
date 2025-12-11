@@ -2,7 +2,9 @@
 
 #include "bayeselo/duration.h"
 
+#include <algorithm>
 #include <charconv>
+#include <exception>
 #include <fstream>
 #include <sstream>
 #include <unordered_map>
@@ -65,7 +67,7 @@ GameResult::Outcome outcome_from_result(const std::string& r) {
 
 std::vector<Game> parse_pgn_chunk(const std::filesystem::path& file, std::size_t start, std::size_t end) {
     std::vector<Game> games;
-    std::ifstream in(file);
+    std::ifstream in(file, std::ios::binary);
     if (!in) return games;
     in.seekg(static_cast<std::streamoff>(start), std::ios::beg);
     std::string line;
@@ -77,6 +79,13 @@ std::vector<Game> parse_pgn_chunk(const std::filesystem::path& file, std::size_t
         auto text = move_text.str();
         current.moves = tokenize_moves(text);
         current.ply_count = static_cast<std::uint32_t>(current.moves.size());
+        if (current.meta.time_control) {
+            try {
+                current.estimated_duration_seconds = parse_duration_to_seconds(*current.meta.time_control);
+            } catch (const std::exception&) {
+                current.estimated_duration_seconds = std::nullopt;
+            }
+        }
         games.push_back(current);
         current = Game{};
         move_text.str("");
@@ -150,11 +159,11 @@ bool passes_filters(const Game& game, const FilterConfig& config) {
         if ((rf == "draw" || rf == "1/2-1/2") && game.result.outcome != GameResult::Outcome::Draw) return false;
     }
 
-    if (config.termination && game.result.termination) {
+    if (config.termination) {
+        if (!game.result.termination) return false;
         if (!contains_case_insensitive(*game.result.termination, *config.termination)) return false;
     }
     return true;
 }
 
 } // namespace bayeselo
-

@@ -1,18 +1,15 @@
 #include "bayeselo_solver.h"
 
+#include <algorithm>
 #include <cmath>
 #include <map>
 #include <numeric>
+#include <optional>
 #include <unordered_map>
 
 namespace bayeselo {
 
 namespace {
-struct Pairing {
-    std::size_t white;
-    std::size_t black;
-    double score; // 1 for white win, 0 for black, 0.5 draw
-};
 
 std::vector<Pairing> build_pairings(const std::vector<Game>& games, std::vector<PlayerStats>& players, std::unordered_map<std::string, std::size_t>& index) {
     std::vector<Pairing> pairings;
@@ -58,12 +55,32 @@ RatingResult BayesEloSolver::solve(const std::vector<Game>& games, std::optional
     RatingResult result;
     std::unordered_map<std::string, std::size_t> index;
     auto pairings = build_pairings(games, result.players, index);
-    update_stats(pairings, result.players);
+    std::vector<std::string> names;
+    names.reserve(result.players.size());
+    for (const auto& p : result.players) names.push_back(p.name);
+    return solve(pairings, names, anchor_player, anchor_rating);
+}
+
+RatingResult BayesEloSolver::solve(const std::vector<Pairing>& pairings, const std::vector<std::string>& names, std::optional<std::string> anchor_player, double anchor_rating) const {
+    RatingResult result;
+    result.players.reserve(names.size());
+    for (const auto& n : names) {
+        result.players.push_back(PlayerStats{n});
+    }
     if (result.players.empty()) return result;
 
+    update_stats(pairings, result.players);
+
     std::vector<double> ratings(result.players.size(), 0.0);
+    std::optional<std::size_t> anchor_index;
     if (anchor_player) {
-        ratings[index[*anchor_player]] = anchor_rating;
+        for (std::size_t i = 0; i < names.size(); ++i) {
+            if (names[i] == *anchor_player) {
+                anchor_index = i;
+                ratings[i] = anchor_rating;
+                break;
+            }
+        }
     }
 
     constexpr double k_scale = 400.0;
@@ -82,7 +99,7 @@ RatingResult BayesEloSolver::solve(const std::vector<Game>& games, std::optional
             hessian[p.black] += variance;
         }
         for (std::size_t i = 0; i < ratings.size(); ++i) {
-            if (anchor_player && result.players[i].name == *anchor_player) continue;
+            if (anchor_index && i == *anchor_index) continue;
             ratings[i] += gradient[i] / (hessian[i] + 1e-9) * k_scale * ln10_div4;
         }
     }
@@ -116,8 +133,26 @@ RatingResult BayesEloSolver::solve(const std::vector<Game>& games, std::optional
         }
     }
 
+    // Sort by rating while keeping LOS aligned
+    std::vector<std::size_t> order(n);
+    std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+        return result.players[a].rating > result.players[b].rating;
+    });
+
+    std::vector<PlayerStats> sorted_players;
+    sorted_players.reserve(n);
+    std::vector<std::vector<double>> sorted_los(n, std::vector<double>(n, 0.0));
+    for (std::size_t i = 0; i < n; ++i) {
+        sorted_players.push_back(result.players[order[i]]);
+        for (std::size_t j = 0; j < n; ++j) {
+            sorted_los[i][j] = result.los_matrix[order[i]][order[j]];
+        }
+    }
+    result.players = std::move(sorted_players);
+    result.los_matrix = std::move(sorted_los);
+
     return result;
 }
 
 } // namespace bayeselo
-

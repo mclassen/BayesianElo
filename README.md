@@ -22,6 +22,18 @@ cmake --build build
 
 Use `--help` for full CLI options.
 
+Memory controls:
+- `--max-games N` caps the number of filtered games kept in memory (extra parsed games are discarded).
+- `--max-size <bytes|k|m|g>` caps approximate retained memory (e.g., `1G`, `512m`, `4096`).
+- `--keep-moves` preserves full move text; by default moves are dropped after counting plies to save memory and use the compact pairing path.
+
+Benchmark helper (disabled in ctest by default):
+```bash
+./build/bench_parser --generate-pgn-size=8G --chunk-size=64M --keep-file
+# Env vars also supported: BENCH_PGN_MB=8000 BENCH_CHUNK_BYTES=64 BENCH_KEEP_FILE=1
+```
+This generates a synthetic PGN (with varied results/terminations/time controls), measures parsing throughput, and optionally keeps the file for further testing.
+
 ## Testing
 
 ```bash
@@ -29,4 +41,3 @@ cmake -S . -B build
 cmake --build build --target duration_tests parser_tests
 ctest --test-dir build
 ```
-
