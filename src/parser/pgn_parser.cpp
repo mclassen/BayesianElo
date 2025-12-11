@@ -3,6 +3,7 @@
 #include "bayeselo/duration.h"
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
 #include <exception>
 #include <fstream>
