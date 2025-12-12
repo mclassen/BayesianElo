@@ -25,6 +25,7 @@ Use `--help` for full CLI options.
 Memory controls:
 - `--max-games N` caps the number of filtered games kept in memory (extra parsed games are discarded).
 - `--max-size <bytes|k|m|g>` caps approximate retained memory (e.g., `1G`, `512m`, `4096`).
+- `--pgn-dir <path>` adds every `.pgn` file found under the directory (recursively).
 - `--keep-moves` preserves full move text; by default moves are dropped after counting plies to save memory and use the compact pairing path.
 
 Benchmark helper (disabled in ctest and excluded from default builds; run manually via `cmake --build build --target bench_parser`):

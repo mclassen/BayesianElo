@@ -11,6 +11,7 @@
 #include "rating/bayeselo_solver.h"
 #include "util/thread_pool.h"
 
+#include <algorithm>
 #include <atomic>
 #include <filesystem>
 #include <iostream>
@@ -18,6 +19,7 @@
 #include <mutex>
 #include <optional>
 #include <thread>
+#include <cctype>
 #include <vector>
 
 using namespace bayeselo;
@@ -33,6 +35,47 @@ struct CliOptions {
     std::optional<std::size_t> max_bytes;
 };
 
+namespace {
+
+bool has_pgn_extension(const std::filesystem::path& path) {
+    auto ext = path.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return ext == ".pgn";
+}
+
+void append_pgn_files_from_dir(const std::filesystem::path& dir, std::vector<std::filesystem::path>& target) {
+    std::error_code ec;
+    if (!std::filesystem::exists(dir, ec)) {
+        std::cerr << "Directory not found: " << dir << "\n";
+        return;
+    }
+    if (!std::filesystem::is_directory(dir, ec)) {
+        std::cerr << "Not a directory: " << dir << "\n";
+        return;
+    }
+    std::size_t added = 0;
+    std::filesystem::recursive_directory_iterator it(dir, ec), end;
+    if (ec) {
+        std::cerr << "Failed to scan directory " << dir << ": " << ec.message() << "\n";
+        return;
+    }
+    for (; it != end; it.increment(ec)) {
+        if (ec) {
+            std::cerr << "Error while scanning " << dir << ": " << ec.message() << "\n";
+            break;
+        }
+        if (!it->is_regular_file()) continue;
+        if (!has_pgn_extension(it->path())) continue;
+        target.push_back(it->path());
+        ++added;
+    }
+    if (added == 0) {
+        std::cerr << "No PGN files found under " << dir << "\n";
+    }
+}
+
+} // namespace
+
 void print_help() {
     std::cout
         << "Bayesian Elo PGN rating tool\n"
@@ -44,6 +87,7 @@ void print_help() {
         << "  --threads <n>               Number of worker threads (default: hardware concurrency)\n"
         << "  --csv <path>                Write ratings table as CSV\n"
         << "  --json <path>               Write ratings table as JSON\n"
+        << "  --pgn-dir <path>            Recursively add all .pgn files under directory\n"
         << "  --max-games <n>             Stop after N accepted games\n"
         << "  --max-size <bytes|k|m|g>    Cap approximate total memory for names, pairings, and internal overhead\n"
         << "  --keep-moves                Retain SAN move text (otherwise dropped after ply counting)\n"
@@ -253,6 +297,13 @@ CliOptions parse_cli(int argc, char** argv) {
             options.json = argv[++i];
             continue;
         }
+        if (arg == "--pgn-dir") {
+            if (!require_value(arg, i)) {
+                std::exit(1);
+            }
+            append_pgn_files_from_dir(argv[++i], options.files);
+            continue;
+        }
         if (arg == "--max-games") {
             std::size_t v = 0;
             if (!parse_size_t_arg(arg, i, v)) {
@@ -277,7 +328,13 @@ CliOptions parse_cli(int argc, char** argv) {
             continue;
         }
         if (!arg.empty() && arg.front() != '-') {
-            options.files.push_back(arg);
+            std::filesystem::path candidate = arg;
+            std::error_code ec;
+            if (std::filesystem::is_directory(candidate, ec)) {
+                append_pgn_files_from_dir(candidate, options.files);
+            } else {
+                options.files.push_back(candidate);
+            }
             continue;
         }
     }
