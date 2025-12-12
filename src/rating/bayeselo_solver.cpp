@@ -83,12 +83,16 @@ RatingResult BayesEloSolver::solve(const std::vector<Pairing>& pairings, const s
         }
     }
 
-    constexpr double k_scale = 400.0;
-    const double ln10_div4 = std::log(10.0) / 400.0;
+    constexpr double k_scale = 400.0; // Standard Elo scale: 400 pts implies 10:1 expected score odds.
+    const double ln10_div4 = std::log(10.0) / k_scale; // ln(10)/400 used in gradient update.
+    constexpr int max_iterations = 50; // Fixed iteration cap for convergence.
+    constexpr double hessian_reg = 1e-6; // Diagonal regularizer to avoid singular Hessian.
+    constexpr double denom_reg = 1e-9;   // Extra guard for divide-by-zero.
+    constexpr double error_scale = 40.0; // Scales inverse-Hessian uncertainty to Elo points.
 
-    for (int iter = 0; iter < 50; ++iter) {
+    for (int iter = 0; iter < max_iterations; ++iter) {
         std::vector<double> gradient(ratings.size(), 0.0);
-        std::vector<double> hessian(ratings.size(), 1e-6);
+        std::vector<double> hessian(ratings.size(), hessian_reg);
         for (const auto& p : pairings) {
             double diff = ratings[p.white] - ratings[p.black];
             double expected = 1.0 / (1.0 + std::pow(10.0, -diff / k_scale));
@@ -100,7 +104,7 @@ RatingResult BayesEloSolver::solve(const std::vector<Pairing>& pairings, const s
         }
         for (std::size_t i = 0; i < ratings.size(); ++i) {
             if (anchor_index && i == *anchor_index) continue;
-            ratings[i] += gradient[i] / (hessian[i] + 1e-9) * k_scale * ln10_div4;
+            ratings[i] += gradient[i] / (hessian[i] + denom_reg) * k_scale * ln10_div4;
         }
     }
 
@@ -122,10 +126,8 @@ RatingResult BayesEloSolver::solve(const std::vector<Pairing>& pairings, const s
 
     for (std::size_t i = 0; i < result.players.size(); ++i) {
         result.players[i].rating = ratings[i];
-        result.players[i].error = variance[i] > 0 ? std::sqrt(1.0 / variance[i]) * 40.0 : 0.0;
-        if (result.players[i].games_played > 0) {
-            result.players[i].opponent_rating_sum = opponent_rating_sum[i] / result.players[i].games_played;
-        }
+        result.players[i].error = variance[i] > 0 ? std::sqrt(1.0 / variance[i]) * error_scale : 0.0;
+        result.players[i].opponent_rating_sum = opponent_rating_sum[i]; // Sum of opponents' ratings across games.
     }
 
     const std::size_t n = result.players.size();
@@ -134,6 +136,7 @@ RatingResult BayesEloSolver::solve(const std::vector<Pairing>& pairings, const s
         for (std::size_t j = 0; j < n; ++j) {
             if (i == j) continue;
             double diff = ratings[i] - ratings[j];
+            // LOS uses half-scale to approximate P(r_i > r_j).
             double los = 1.0 / (1.0 + std::pow(10.0, -diff / (k_scale / 2.0)));
             result.los_matrix[i][j] = los;
         }

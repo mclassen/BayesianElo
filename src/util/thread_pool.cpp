@@ -63,9 +63,8 @@ void ThreadPool::worker(std::stop_token token) {
 
         {
             std::scoped_lock lock(mutex_);
-            if (active_tasks_ > 0) {
-                --active_tasks_;
-            }
+            assert(active_tasks_ > 0);
+            --active_tasks_;
             if (tasks_.empty() && active_tasks_ == 0) {
                 idle_cv_.notify_all();
                 if (stopping_) {

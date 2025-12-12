@@ -92,7 +92,6 @@ std::vector<Game> parse_pgn_chunk(const std::filesystem::path& file, std::size_t
     Game current;
     bool in_headers = true;
     std::string move_text;
-    move_text.reserve(256);
 
     auto flush_game = [&]() {
         current.moves = tokenize_moves(move_text);
@@ -111,7 +110,7 @@ std::vector<Game> parse_pgn_chunk(const std::filesystem::path& file, std::size_t
     };
 
     std::size_t pos = 0;
-    while (pos <= buffer.size()) {
+    while (pos < buffer.size()) {
         std::size_t line_end = buffer.find('\n', pos);
         if (line_end == std::string::npos) line_end = buffer.size();
         std::string_view line_view(buffer.data() + pos, line_end - pos);

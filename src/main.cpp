@@ -131,10 +131,11 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    constexpr std::size_t default_chunk_bytes = 1u << 20; // 1 MiB chunks: balances IO and parallel parsing.
     std::vector<ChunkRange> chunks;
     chunks.reserve(options.files.size());
     for (const auto& file : options.files) {
-        auto ranges = split_pgn_file(file, 1 << 20);
+        auto ranges = split_pgn_file(file, default_chunk_bytes);
         chunks.insert(chunks.end(), ranges.begin(), ranges.end());
     }
 
@@ -279,7 +280,7 @@ int main(int argc, char** argv) {
 
     print_ratings(ratings);
     if (max_reached.load(std::memory_order_relaxed)) {
-        std::cerr << "Reached limit (--max-games or --max-bytes); remaining parsed games were discarded.\n";
+        std::cerr << "Reached limit (--max-games or --max-size); remaining parsed games were discarded.\n";
     }
     if (options.csv) write_csv(ratings, *options.csv);
     if (options.json) write_json(ratings, *options.json);

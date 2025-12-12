@@ -6,17 +6,22 @@
 #include <iostream>
 #include <optional>
 #include <string>
+#include <system_error>
 
 int main() {
     const std::string path = "temp_test.pgn";
     const std::string chunk_path = "temp_chunk.pgn";
-    auto cleanup = [&]() {
-        std::filesystem::remove(path);
-        std::filesystem::remove(chunk_path);
-    };
+    struct TempFileGuard {
+        std::filesystem::path path;
+        std::filesystem::path chunk_path;
+        ~TempFileGuard() {
+            std::error_code ec;
+            std::filesystem::remove(path, ec);
+            std::filesystem::remove(chunk_path, ec);
+        }
+    } guard{path, chunk_path};
     auto fail = [&](const std::string& msg) {
         std::cerr << msg << "\n";
-        cleanup();
         return 1;
     };
 
@@ -75,6 +80,5 @@ int main() {
     if (chunks.empty()) return fail("chunk splitter produced no chunks");
     if (chunks.back().end_offset != size) return fail("chunk end offset mismatch: expected " + std::to_string(size) + ", got " + std::to_string(chunks.back().end_offset));
     std::cout << "parser tests passed\n";
-    cleanup();
     return 0;
 }

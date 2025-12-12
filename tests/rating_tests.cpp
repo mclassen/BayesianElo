@@ -25,8 +25,8 @@ int main() {
     // LOS matrix should align with sorted order
     assert(res.los_matrix.size() == res.players.size());
     assert(res.los_matrix[0].size() == res.players.size());
-    assert(res.los_matrix[0][1] > 0.5); // Alpha favored over Beta
-    assert(res.los_matrix[1][2] > 0.5); // Beta favored over Gamma
+    assert(res.los_matrix[0][1] > 0.5); // 0.5 = even odds; Alpha favored over Beta.
+    assert(res.los_matrix[1][2] > 0.5); // 0.5 = even odds; Beta favored over Gamma.
 
     // Pairings-based path should match
     std::vector<bayeselo::Pairing> pairings;

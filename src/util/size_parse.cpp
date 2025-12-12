@@ -1,5 +1,6 @@
 #include "bayeselo/size_parse.h"
 
+#include <exception>
 #include <optional>
 #include <string>
 
@@ -16,7 +17,12 @@ std::optional<std::size_t> parse_size(std::string_view text) {
 
     std::string number_part = (suffix == '\0') ? std::string(text) : std::string(text.substr(0, text.size() - 1));
     if (number_part.empty()) return std::nullopt;
-    return static_cast<std::size_t>(std::stoull(number_part)) * multiplier;
+    if (number_part.front() == '-') return std::nullopt;
+    try {
+        return static_cast<std::size_t>(std::stoull(number_part)) * multiplier;
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
 }
 
 std::size_t parse_size_or(std::string_view text, std::size_t fallback) {
