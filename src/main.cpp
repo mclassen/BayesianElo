@@ -83,7 +83,7 @@ void append_pgn_files_from_dir(const std::filesystem::path& dir, std::vector<std
 void print_help() {
     std::cout
         << "Bayesian Elo PGN rating tool\n"
-        << "Inspired by BayesElo by Rémi Coulom (http://www.remi-coulom.fr/Bayesian-Elo)\n"
+        << "Inspired by BayesElo by Remi Coulom (http://www.remi-coulom.fr/Bayesian-Elo)\n"
         << "Usage: elo_rating [options] file1.pgn file2.pgn ...\n\n"
         << "Options:\n"
         << "  -h, --help                  Show this help message and exit\n"
