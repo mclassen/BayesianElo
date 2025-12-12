@@ -60,6 +60,9 @@ RatingResult BayesEloSolver::solve(const std::vector<Game>& games, std::optional
     for (const auto& p : result.players) names.push_back(p.name);
     if (names.size() <= 1) {
         result.los_matrix.assign(result.players.size(), std::vector<double>(result.players.size(), 1.0));
+        for (std::size_t i = 0; i < result.players.size(); ++i) {
+            result.los_matrix[i][i] = 0.5;
+        }
         return result; // Single-player data is not meaningful for Elo.
     }
     return solve(pairings, names, anchor_player, anchor_rating);

@@ -500,10 +500,6 @@ int main(int argc, char** argv) {
                     } else if (g.result.outcome == GameResult::Outcome::BlackWin) {
                         score = 0.0;
                     }
-                    if (options.max_games && accepted.load(std::memory_order_acquire) >= *options.max_games) {
-                        max_reached.store(true, std::memory_order_relaxed);
-                        break;
-                    }
                     if (!reserve_bytes(pairing_bytes)) {
                         break;
                     }

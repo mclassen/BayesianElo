@@ -19,7 +19,7 @@ int main() {
     if (parse_size("-1")) return fail("expected -1 rejected");
     if (parse_size("-5g")) return fail("expected -5g rejected");
     if (parse_size("foo")) return fail("expected foo rejected");
-    if (parse_size("10t")) return fail("expected invalid suffix rejected");
+    if (parse_size("10t")) return fail("expected 10t rejected due to invalid suffix");
 
     const auto max_sz = std::numeric_limits<std::size_t>::max();
     auto overflow = parse_size(std::to_string(max_sz) + "k");

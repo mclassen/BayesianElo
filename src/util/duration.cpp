@@ -20,7 +20,12 @@ double parse_duration_to_seconds(std::string_view value) {
             continue;
         }
         if (std::isalpha(static_cast<unsigned char>(ch))) {
-            suffix = ch;
+            char lower_ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            if (lower_ch == 'h' || lower_ch == 'm' || lower_ch == 's') {
+                suffix = lower_ch;
+            } else {
+                throw std::invalid_argument("Invalid duration suffix: " + std::string(1, ch) + " in " + std::string(value));
+            }
         }
         break; // stop at the first non-numeric marker (e.g. '+' in "300+2")
     }
@@ -35,15 +40,13 @@ double parse_duration_to_seconds(std::string_view value) {
     }
     switch (suffix) {
     case 'h':
-    case 'H':
         return number * 3600.0;
     case 'm':
-    case 'M':
         return number * 60.0;
     case 's':
-    case 'S':
-    default:
         return number;
+    default:
+        throw std::invalid_argument("Invalid duration suffix: " + std::string(1, suffix) + " in " + std::string(value));
     }
 }
 

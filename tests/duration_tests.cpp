@@ -24,6 +24,12 @@ int main() {
         return 1;
     } catch (const std::exception&) {
     }
+    try {
+        parse_duration_to_seconds("5x+3");
+        std::cerr << "duration test failed: \"5x+3\" should throw\n";
+        return 1;
+    } catch (const std::exception&) {
+    }
     if (!check("", 0.0)) return 1; // empty input treated as zero per parser contract
     try {
         parse_duration_to_seconds("-5m");
