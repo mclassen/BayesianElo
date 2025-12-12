@@ -1,5 +1,6 @@
 #include "parser/chunk_splitter.h"
 #include "parser/pgn_parser.h"
+#include "bayeselo/size_parse.h"
 
 #include <chrono>
 #include <cstdlib>
@@ -12,23 +13,9 @@
 
 namespace {
 
-std::size_t parse_size(std::string_view text, std::size_t fallback) {
-    if (text.empty()) return fallback;
-    std::size_t multiplier = 1;
-    char suffix = text.back();
-    if (suffix == 'k' || suffix == 'K') multiplier = 1024;
-    else if (suffix == 'm' || suffix == 'M') multiplier = 1024ull * 1024ull;
-    else if (suffix == 'g' || suffix == 'G') multiplier = 1024ull * 1024ull * 1024ull;
-    else suffix = '\0';
-
-    std::string number_part = (suffix == '\0') ? std::string(text) : std::string(text.substr(0, text.size() - 1));
-    if (number_part.empty()) return fallback;
-    return static_cast<std::size_t>(std::stoull(number_part)) * multiplier;
-}
-
 std::size_t env_size_bytes(const char* name, std::size_t fallback) {
     if (const char* val = std::getenv(name)) {
-        return parse_size(val, fallback);
+        return bayeselo::parse_size_or(val, fallback);
     }
     return fallback;
 }
@@ -87,10 +74,10 @@ int main(int argc, char** argv) {
             keep_file = true;
         } else if (std::string_view(argv[i]).rfind("--generate-pgn-size=", 0) == 0) {
             auto val = std::string_view(argv[i]).substr(std::string_view("--generate-pgn-size=").size());
-            target_bytes = parse_size(val, target_bytes);
+            target_bytes = bayeselo::parse_size_or(val, target_bytes);
         } else if (std::string_view(argv[i]).rfind("--chunk-size=", 0) == 0) {
             auto val = std::string_view(argv[i]).substr(std::string_view("--chunk-size=").size());
-            chunk_bytes = parse_size(val, chunk_bytes);
+            chunk_bytes = bayeselo::parse_size_or(val, chunk_bytes);
         }
     }
 

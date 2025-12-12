@@ -1,9 +1,7 @@
 #include "terminal_output.h"
 
-#include <algorithm>
-#include <format>
+#include <iomanip>
 #include <iostream>
-#include <ranges>
 
 namespace bayeselo {
 
@@ -16,18 +14,28 @@ std::string colorize(double rating, std::size_t rank) {
 }
 
 void print_ratings(const RatingResult& result) {
-    std::vector<PlayerStats> sorted = result.players;
-    std::ranges::sort(sorted, [](const PlayerStats& a, const PlayerStats& b) { return a.rating > b.rating; });
+    // Players are already sorted by rating in BayesEloSolver.
     std::cout << "Rank | Player | Elo | Error | Games | Score% | Draw%\n";
     std::cout << "-----------------------------------------------------\n";
-    for (std::size_t i = 0; i < sorted.size(); ++i) {
-        const auto& p = sorted[i];
+    auto old_flags = std::cout.flags();
+    auto old_precision = std::cout.precision();
+    std::cout << std::fixed << std::setprecision(2);
+    for (std::size_t i = 0; i < result.players.size(); ++i) {
+        const auto& p = result.players[i];
         double score_pct = p.games_played ? (p.score_sum / p.games_played) * 100.0 : 0.0;
         double draw_pct = p.games_played ? (p.draws / p.games_played) * 100.0 : 0.0;
         auto color = colorize(p.rating, i);
-        std::cout << std::format("{}{:>4} | {:<20} | {:7.2f} | {:6.2f} | {:5} | {:6.2f}% | {:6.2f}%\033[0m\n",
-                                 color, i + 1, p.name, p.rating, p.error, p.games_played, score_pct, draw_pct);
+        std::cout << color
+                  << std::right << std::setw(4) << (i + 1) << " | "
+                  << std::left << std::setw(20) << p.name << " | "
+                  << std::right << std::setw(7) << p.rating << " | "
+                  << std::setw(6) << p.error << " | "
+                  << std::setw(5) << p.games_played << " | "
+                  << std::setw(6) << score_pct << "% | "
+                  << std::setw(6) << draw_pct << "%\033[0m\n";
     }
+    std::cout.flags(old_flags);
+    std::cout.precision(old_precision);
 }
 
 } // namespace bayeselo

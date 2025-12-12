@@ -1,17 +1,25 @@
 #include "parser/pgn_parser.h"
 #include "parser/chunk_splitter.h"
 
-#include <cassert>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <optional>
 #include <string>
 
-template <typename T>
-void ignore_unused(const T&) {}
-
 int main() {
+    const std::string path = "temp_test.pgn";
+    const std::string chunk_path = "temp_chunk.pgn";
+    auto cleanup = [&]() {
+        std::filesystem::remove(path);
+        std::filesystem::remove(chunk_path);
+    };
+    auto fail = [&](const std::string& msg) {
+        std::cerr << msg << "\n";
+        cleanup();
+        return 1;
+    };
+
     std::string content = R"([Event "Test"]
 [White "Alice"]
 [Black "Bob"]
@@ -21,24 +29,30 @@ int main() {
 
 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 1-0
 )";
-    const std::string path = "temp_test.pgn";
-    std::ofstream out(path);
+    std::ofstream out(path, std::ios::binary);
     out << content;
     out.close();
 
-    auto games = bayeselo::parse_pgn_chunk(path, 0, content.size());
-    assert(games.size() == 1);
-    assert(games[0].meta.white == "Alice");
-    assert(games[0].meta.black == "Bob");
-    assert(games[0].result.outcome == bayeselo::GameResult::Outcome::WhiteWin);
-    assert(games[0].ply_count >= 6);
-    assert(games[0].estimated_duration_seconds);
-    assert(*games[0].estimated_duration_seconds == 300.0);
+    std::vector<bayeselo::Game> games;
+    try {
+        games = bayeselo::parse_pgn_chunk(path, 0, content.size());
+    } catch (const std::exception& ex) {
+        return fail(std::string("parse_pgn_chunk threw: ") + ex.what());
+    }
+    if (games.size() != 1) return fail("expected 1 game parsed, got " + std::to_string(games.size()));
+    const auto& game = games[0];
+    if (game.meta.white != "Alice") return fail("expected white Alice, got " + game.meta.white);
+    if (game.meta.black != "Bob") return fail("expected black Bob, got " + game.meta.black);
+    if (game.result.outcome != bayeselo::GameResult::Outcome::WhiteWin) return fail("outcome not parsed as WhiteWin");
+    if (game.ply_count < 6) return fail("ply count too low: " + std::to_string(game.ply_count));
+    if (!game.estimated_duration_seconds) return fail("missing estimated duration");
+    if (*game.estimated_duration_seconds != 300.0) return fail("expected 300s estimate, got " + std::to_string(*game.estimated_duration_seconds));
     bayeselo::FilterConfig config;
     config.termination = "normal";
-    assert(bayeselo::passes_filters(games[0], config));
-    games[0].result.termination = std::nullopt;
-    assert(!bayeselo::passes_filters(games[0], config));
+    if (!bayeselo::passes_filters(game, config)) return fail("termination filter rejected valid game");
+    auto filtered = game;
+    filtered.result.termination = std::nullopt;
+    if (bayeselo::passes_filters(filtered, config)) return fail("termination filter accepted missing termination");
 
     // Chunk splitter should clamp to EOF even without trailing Event
     const std::string single_game = R"([Event "Solo"]
@@ -48,18 +62,19 @@ int main() {
 
 1. e4 e5 2. Nf3 Nc6 1-0
 )";
-    const std::string chunk_path = "temp_chunk.pgn";
     {
         std::ofstream f(chunk_path, std::ios::binary);
         f << single_game;
     }
     auto chunks = bayeselo::split_pgn_file(chunk_path, 16);
-    std::ifstream fin(chunk_path, std::ios::binary | std::ios::ate);
-    auto size = static_cast<std::size_t>(fin.tellg());
-    assert(!chunks.empty());
-    assert(chunks.back().end_offset == size);
-    std::filesystem::remove(chunk_path);
+    std::size_t size = 0;
+    {
+        std::ifstream fin(chunk_path, std::ios::binary | std::ios::ate);
+        size = static_cast<std::size_t>(fin.tellg());
+    }
+    if (chunks.empty()) return fail("chunk splitter produced no chunks");
+    if (chunks.back().end_offset != size) return fail("chunk end offset mismatch: expected " + std::to_string(size) + ", got " + std::to_string(chunks.back().end_offset));
     std::cout << "parser tests passed\n";
-    std::filesystem::remove(path);
+    cleanup();
     return 0;
 }

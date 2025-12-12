@@ -84,7 +84,7 @@ RatingResult BayesEloSolver::solve(const std::vector<Pairing>& pairings, const s
     }
 
     constexpr double k_scale = 400.0;
-    constexpr double ln10_div4 = std::log(10.0) / 400.0;
+    const double ln10_div4 = std::log(10.0) / 400.0;
 
     for (int iter = 0; iter < 50; ++iter) {
         std::vector<double> gradient(ratings.size(), 0.0);
@@ -114,11 +114,17 @@ RatingResult BayesEloSolver::solve(const std::vector<Pairing>& pairings, const s
         variance[p.black] += var;
     }
 
+    std::vector<double> opponent_rating_sum(ratings.size(), 0.0);
+    for (const auto& p : pairings) {
+        opponent_rating_sum[p.white] += ratings[p.black];
+        opponent_rating_sum[p.black] += ratings[p.white];
+    }
+
     for (std::size_t i = 0; i < result.players.size(); ++i) {
         result.players[i].rating = ratings[i];
         result.players[i].error = variance[i] > 0 ? std::sqrt(1.0 / variance[i]) * 40.0 : 0.0;
         if (result.players[i].games_played > 0) {
-            result.players[i].opponent_rating_sum = result.players[i].opponent_rating_sum / result.players[i].games_played;
+            result.players[i].opponent_rating_sum = opponent_rating_sum[i] / result.players[i].games_played;
         }
     }
 

@@ -28,7 +28,10 @@ std::vector<ChunkRange> split_pgn_file(const std::filesystem::path& file, std::s
         while (std::getline(in, line)) {
             pos = in.tellg();
             if (!line.empty() && line.rfind("[Event ", 0) == 0) {
-                tentative_end = static_cast<std::size_t>(line_start);
+                auto event_pos = static_cast<std::size_t>(line_start);
+                if (event_pos > current_start) {
+                    tentative_end = event_pos;
+                }
                 break;
             }
             if (pos == std::streampos(-1)) {

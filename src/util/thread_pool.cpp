@@ -1,5 +1,6 @@
 #include "thread_pool.h"
 
+#include <cassert>
 #include <utility>
 
 namespace bayeselo {
@@ -50,6 +51,7 @@ void ThreadPool::worker(std::stop_token token) {
             if (stopping_ && tasks_.empty()) {
                 break;
             }
+            assert(!tasks_.empty());
             task = std::move(tasks_.front());
             tasks_.pop();
             ++active_tasks_;

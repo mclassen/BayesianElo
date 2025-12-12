@@ -4,11 +4,12 @@
 
 #include <algorithm>
 #include <cctype>
-#include <charconv>
 #include <exception>
 #include <fstream>
-#include <sstream>
+#include <optional>
+#include <string_view>
 #include <unordered_map>
+#include <utility>
 
 namespace bayeselo {
 
@@ -38,22 +39,27 @@ std::vector<std::string> tokenize_moves(const std::string& text) {
     std::string token;
     bool in_comment = false;
     int variation_depth = 0;
-    for (char ch : text) {
-        if (ch == '{') { in_comment = true; continue; }
+
+    auto flush_token = [&]() {
+        if (!token.empty()) {
+            moves.push_back(token);
+            token.clear();
+        }
+    };
+
+    for (unsigned char ch : text) {
+        if (ch == '{') { in_comment = true; flush_token(); continue; }
         if (ch == '}') { in_comment = false; continue; }
-        if (ch == '(') { ++variation_depth; continue; }
+        if (ch == '(') { ++variation_depth; flush_token(); continue; }
         if (ch == ')') { if (variation_depth > 0) --variation_depth; continue; }
         if (in_comment || variation_depth > 0) continue;
-        if (std::isspace(static_cast<unsigned char>(ch))) {
-            if (!token.empty()) {
-                moves.push_back(token);
-                token.clear();
-            }
-        } else {
-            token.push_back(ch);
+        if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') {
+            flush_token();
+            continue;
         }
+        token.push_back(static_cast<char>(ch));
     }
-    if (!token.empty()) { moves.push_back(token); }
+    flush_token();
     return moves;
 }
 
@@ -68,17 +74,28 @@ GameResult::Outcome outcome_from_result(const std::string& r) {
 
 std::vector<Game> parse_pgn_chunk(const std::filesystem::path& file, std::size_t start, std::size_t end) {
     std::vector<Game> games;
+    if (end <= start) return games;
+
     std::ifstream in(file, std::ios::binary);
     if (!in) return games;
+
+    in.seekg(0, std::ios::end);
+    const auto total = static_cast<std::size_t>(in.tellg());
+    if (start >= total) return games;
+    end = std::min(end, total);
+
+    const std::size_t length = end - start;
+    std::string buffer(length, '\0');
     in.seekg(static_cast<std::streamoff>(start), std::ios::beg);
-    std::string line;
+    in.read(buffer.data(), static_cast<std::streamoff>(length));
+
     Game current;
     bool in_headers = true;
-    std::ostringstream move_text;
+    std::string move_text;
+    move_text.reserve(256);
 
     auto flush_game = [&]() {
-        auto text = move_text.str();
-        current.moves = tokenize_moves(text);
+        current.moves = tokenize_moves(move_text);
         current.ply_count = static_cast<std::uint32_t>(current.moves.size());
         if (current.meta.time_control) {
             try {
@@ -87,38 +104,48 @@ std::vector<Game> parse_pgn_chunk(const std::filesystem::path& file, std::size_t
                 current.estimated_duration_seconds = std::nullopt;
             }
         }
-        games.push_back(current);
+        games.push_back(std::move(current));
         current = Game{};
-        move_text.str("");
         move_text.clear();
         in_headers = true;
     };
 
-    while (static_cast<std::size_t>(in.tellg()) < end && std::getline(in, line)) {
-        if (line.empty()) {
+    std::size_t pos = 0;
+    while (pos <= buffer.size()) {
+        std::size_t line_end = buffer.find('\n', pos);
+        if (line_end == std::string::npos) line_end = buffer.size();
+        std::string_view line_view(buffer.data() + pos, line_end - pos);
+        if (!line_view.empty() && line_view.back() == '\r') {
+            line_view.remove_suffix(1);
+        }
+
+        if (line_view.empty()) {
             if (!in_headers) {
                 flush_game();
             }
-            continue;
-        }
-        if (line.front() == '[') {
-            auto tag_line = parse_tag_line(line);
-            if (!tag_line) continue;
-            auto [key, value] = split_tag(*tag_line);
-            if (key == "White") current.meta.white = value;
-            else if (key == "Black") current.meta.black = value;
-            else if (key == "Result") current.result.outcome = outcome_from_result(value);
-            else if (key == "Termination") current.result.termination = value;
-            else if (key == "UTCDate") current.meta.utc_date = value;
-            else if (key == "UTCTime") current.meta.utc_time = value;
-            else if (key == "TimeControl") current.meta.time_control = value;
+        } else if (line_view.front() == '[') {
+            auto tag_line = parse_tag_line(line_view);
+            if (tag_line) {
+                auto [key, value] = split_tag(*tag_line);
+                if (key == "White") current.meta.white = value;
+                else if (key == "Black") current.meta.black = value;
+                else if (key == "Result") current.result.outcome = outcome_from_result(value);
+                else if (key == "Termination") current.result.termination = value;
+                else if (key == "UTCDate") current.meta.utc_date = value;
+                else if (key == "UTCTime") current.meta.utc_time = value;
+                else if (key == "TimeControl") current.meta.time_control = value;
+            }
             in_headers = true;
         } else {
             in_headers = false;
-            move_text << line << ' ';
+            move_text.append(line_view);
+            move_text.push_back(' ');
         }
+
+        if (line_end == buffer.size()) break;
+        pos = line_end + 1;
     }
-    if (!move_text.str().empty()) {
+    if (!move_text.empty()) {
         flush_game();
     }
     return games;
@@ -143,9 +170,17 @@ bool passes_filters(const Game& game, const FilterConfig& config) {
     if (config.max_plies && game.ply_count > *config.max_plies) return false;
 
     if (config.min_time_seconds || config.max_time_seconds) {
-        if (!game.estimated_duration_seconds) return false;
-        if (config.min_time_seconds && *game.estimated_duration_seconds < *config.min_time_seconds) return false;
-        if (config.max_time_seconds && *game.estimated_duration_seconds > *config.max_time_seconds) return false;
+        std::optional<double> duration = game.estimated_duration_seconds;
+        if (!duration && game.meta.time_control) {
+            try {
+                duration = parse_duration_to_seconds(*game.meta.time_control);
+            } catch (const std::exception&) {
+                duration = std::nullopt;
+            }
+        }
+        if (!duration) return false;
+        if (config.min_time_seconds && *duration < *config.min_time_seconds) return false;
+        if (config.max_time_seconds && *duration > *config.max_time_seconds) return false;
     }
 
     if (config.white_name && !contains_case_insensitive(game.meta.white, *config.white_name)) return false;

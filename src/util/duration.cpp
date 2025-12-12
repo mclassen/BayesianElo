@@ -1,7 +1,8 @@
 #include "bayeselo/duration.h"
 
-#include <charconv>
 #include <cctype>
+#include <cerrno>
+#include <cstdlib>
 #include <stdexcept>
 #include <string>
 
@@ -23,9 +24,13 @@ double parse_duration_to_seconds(std::string_view value) {
         }
         break; // stop at the first non-numeric marker (e.g. '+' in "300+2")
     }
-    double number = 0.0;
-    auto res = std::from_chars(numeric.data(), numeric.data() + numeric.size(), number);
-    if (res.ec != std::errc{}) {
+    if (numeric.empty()) {
+        throw std::invalid_argument("Invalid duration: " + std::string(value));
+    }
+    errno = 0;
+    char* endptr = nullptr;
+    double number = std::strtod(numeric.c_str(), &endptr);
+    if (errno == ERANGE || endptr == numeric.c_str() || *endptr != '\0') {
         throw std::invalid_argument("Invalid duration: " + std::string(value));
     }
     switch (suffix) {

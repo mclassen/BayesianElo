@@ -2,6 +2,7 @@
 #include "bayeselo/filters.h"
 #include "bayeselo/game.h"
 #include "bayeselo/rating_result.h"
+#include "bayeselo/size_parse.h"
 #include "version.h"
 #include "output/export_writer.h"
 #include "output/terminal_output.h"
@@ -10,7 +11,6 @@
 #include "rating/bayeselo_solver.h"
 #include "util/thread_pool.h"
 
-#include <algorithm>
 #include <atomic>
 #include <filesystem>
 #include <iostream>
@@ -30,20 +30,6 @@ struct CliOptions {
     bool keep_moves{false};
     std::optional<std::size_t> max_bytes;
 };
-
-std::optional<std::size_t> parse_size(std::string_view text) {
-    if (text.empty()) return std::nullopt;
-    std::size_t multiplier = 1;
-    char suffix = text.back();
-    if (suffix == 'k' || suffix == 'K') multiplier = 1024;
-    else if (suffix == 'm' || suffix == 'M') multiplier = 1024ull * 1024ull;
-    else if (suffix == 'g' || suffix == 'G') multiplier = 1024ull * 1024ull * 1024ull;
-    else suffix = '\0';
-
-    std::string number_part = (suffix == '\0') ? std::string(text) : std::string(text.substr(0, text.size() - 1));
-    if (number_part.empty()) return std::nullopt;
-    return static_cast<std::size_t>(std::stoull(number_part)) * multiplier;
-}
 
 void print_help() {
     std::cout
@@ -173,6 +159,22 @@ int main(int argc, char** argv) {
             local_games.reserve(parsed.size());
             local_pairs.reserve(parsed.size());
 
+            auto try_accept_game = [&]() -> bool {
+                if (!options.max_games) {
+                    accepted.fetch_add(1, std::memory_order_relaxed);
+                    return true;
+                }
+                std::size_t current = accepted.load(std::memory_order_relaxed);
+                while (true) {
+                    if (current >= *options.max_games) {
+                        return false;
+                    }
+                    if (accepted.compare_exchange_weak(current, current + 1, std::memory_order_relaxed, std::memory_order_relaxed)) {
+                        return true;
+                    }
+                }
+            };
+
             for (auto& g : parsed) {
                 if (!options.keep_moves) {
                     g.moves.clear();
@@ -215,18 +217,37 @@ int main(int argc, char** argv) {
 
                     if (options.max_bytes) {
                         auto current = estimated_bytes.load(std::memory_order_relaxed);
-                        if (current + pairing_bytes > *options.max_bytes) {
-                            max_reached.store(true, std::memory_order_relaxed);
+                        bool limit_hit = false;
+                        while (true) {
+                            if (current + pairing_bytes > *options.max_bytes) {
+                                max_reached.store(true, std::memory_order_relaxed);
+                                limit_hit = true;
+                                break;
+                            }
+                            if (estimated_bytes.compare_exchange_weak(current, current + pairing_bytes,
+                                                                      std::memory_order_relaxed,
+                                                                      std::memory_order_relaxed)) {
+                                break;
+                            }
+                        }
+                        if (limit_hit) {
                             break;
                         }
-                        estimated_bytes.fetch_add(pairing_bytes, std::memory_order_relaxed);
+                    }
+
+                    if (!try_accept_game()) {
+                        max_reached.store(true, std::memory_order_relaxed);
+                        break;
                     }
 
                     local_pairs.push_back(Pairing{w_idx, b_idx, score});
                 } else {
+                    if (!try_accept_game()) {
+                        max_reached.store(true, std::memory_order_relaxed);
+                        break;
+                    }
                     local_games.push_back(std::move(g));
                 }
-                accepted.fetch_add(1, std::memory_order_relaxed);
             }
 
             if (!local_games.empty() || !local_pairs.empty()) {

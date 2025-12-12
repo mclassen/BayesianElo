@@ -20,6 +20,7 @@ configure_file(${CMAKE_SOURCE_DIR}/version.h.in ${CMAKE_BINARY_DIR}/generated/ve
 
 add_library(bayeselo_lib
     src/util/duration.cpp
+    src/util/size_parse.cpp
     src/util/thread_pool.cpp
     src/parser/chunk_splitter.cpp
     src/parser/pgn_parser.cpp
