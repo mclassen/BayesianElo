@@ -310,8 +310,8 @@ int main(int argc, char** argv) {
     std::unordered_map<std::string, std::size_t> name_index;
     std::atomic_size_t estimated_bytes{0};
     const bool use_pairings = !options.keep_moves;
-    constexpr std::size_t pairing_bytes = sizeof(Pairing); // Approximate per-pairing footprint (object only, excludes allocator overhead; real usage is higher).
-    constexpr std::size_t name_overhead = sizeof(std::string); // Rough estimate to track std::string control blocks; actual usage is higher (soft limit).
+    constexpr std::size_t pairing_bytes = sizeof(Pairing); // Heuristic; we intentionally avoid extra margins to keep limits intuitive (see PR discussion).
+    constexpr std::size_t name_overhead = sizeof(std::string); // Same here: this tracks control blocks only so --max-size is a soft cap by design.
     auto reserve_bytes = [&](std::size_t bytes) -> bool {
         if (!options.max_bytes) {
             return true;
@@ -330,7 +330,7 @@ int main(int argc, char** argv) {
                 return true;
             }
             if (++attempts % 8 == 0) {
-                std::this_thread::yield();
+                std::this_thread::yield(); // Simple spin/yield was chosen over heavier primitives; see PR thread.
             }
         }
     };
@@ -363,7 +363,7 @@ int main(int argc, char** argv) {
                         return true;
                     }
                     if (++attempts % 8 == 0) {
-                        std::this_thread::yield();
+                        std::this_thread::yield(); // Same deliberate policy as reserve_bytes: lightweight spin + yield.
                     }
                 }
             };
