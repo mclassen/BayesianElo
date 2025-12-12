@@ -379,7 +379,7 @@ int main(int argc, char** argv) {
     std::atomic_size_t estimated_bytes{0};
     const bool use_pairings = !options.keep_moves;
     constexpr std::size_t pairing_bytes = sizeof(Pairing); // Heuristic; we intentionally avoid extra margins to keep limits intuitive (see PR discussion).
-    constexpr std::size_t name_overhead = sizeof(std::string); // Same here: this tracks control blocks only so --max-size is a soft cap by design.
+    constexpr std::size_t kNameOverhead = sizeof(std::string); // Same here: this tracks control blocks only so --max-size is a soft cap by design.
     auto reserve_bytes = [&](std::size_t bytes) -> bool {
         if (!options.max_bytes) {
             return true;
@@ -465,14 +465,14 @@ int main(int argc, char** argv) {
                         auto itw = name_index.find(g.meta.white);
                         if (itw == name_index.end()) {
                             white_missing = true;
-                            name_bytes_needed += g.meta.white.size() + name_overhead;
+                            name_bytes_needed += g.meta.white.size() + kNameOverhead;
                         } else {
                             w_idx = itw->second;
                         }
                         auto itb = name_index.find(g.meta.black);
                         if (itb == name_index.end()) {
                             black_missing = true;
-                            name_bytes_needed += g.meta.black.size() + name_overhead;
+                            name_bytes_needed += g.meta.black.size() + kNameOverhead;
                         } else {
                             b_idx = itb->second;
                         }
