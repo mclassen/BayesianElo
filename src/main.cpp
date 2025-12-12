@@ -220,25 +220,24 @@ int main(int argc, char** argv) {
                     if (g.result.outcome == GameResult::Outcome::WhiteWin) score = 1.0;
                     else if (g.result.outcome == GameResult::Outcome::BlackWin) score = 0.0;
 
-                    if (options.max_bytes) {
-                        auto current = estimated_bytes.load(std::memory_order_relaxed);
-                        bool limit_hit = false;
-                        while (true) {
-                            if (current + pairing_bytes > *options.max_bytes) {
-                                max_reached.store(true, std::memory_order_relaxed);
-                                limit_hit = true;
-                                break;
-                            }
-                            if (estimated_bytes.compare_exchange_weak(current, current + pairing_bytes,
-                                                                      std::memory_order_relaxed,
-                                                                      std::memory_order_relaxed)) {
-                                break;
-                            }
+                if (options.max_bytes) {
+                    bool limit_hit = false;
+                    for (;;) {
+                        auto current = estimated_bytes.load(std::memory_order_acquire);
+                        auto next = current + pairing_bytes;
+                        if (next > *options.max_bytes) {
+                            max_reached.store(true, std::memory_order_relaxed);
+                            limit_hit = true;
+                            break;
                         }
-                        if (limit_hit) {
+                        if (estimated_bytes.compare_exchange_weak(current, next,
+                                                                  std::memory_order_acq_rel,
+                                                                  std::memory_order_acquire)) {
                             break;
                         }
                     }
+                    if (limit_hit) break;
+                }
 
                     if (!try_accept_game()) {
                         max_reached.store(true, std::memory_order_relaxed);

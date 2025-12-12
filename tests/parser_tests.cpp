@@ -20,7 +20,7 @@ int main() {
             std::filesystem::remove(chunk_path, ec);
         }
     } guard{path, chunk_path};
-    auto fail = [&](const std::string& msg) {
+    auto fail = [](const std::string& msg) {
         std::cerr << msg << "\n";
         return 1;
     };

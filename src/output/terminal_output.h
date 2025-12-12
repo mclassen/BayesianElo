@@ -8,5 +8,4 @@ namespace bayeselo {
 
 void print_ratings(const RatingResult& result);
 
-}
-
+} // namespace bayeselo;

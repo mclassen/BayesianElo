@@ -10,7 +10,7 @@ int main() {
     using bayeselo::BayesEloSolver;
     using bayeselo::Game;
     using bayeselo::GameResult;
-    auto fail = [&](const std::string& msg) {
+    auto fail = [](const std::string& msg) {
         std::cerr << msg << "\n";
         return 1;
     };
