@@ -45,6 +45,10 @@ void write_csv(const RatingResult& result, const std::filesystem::path& path) {
         double draw_pct = p.games_played ? (static_cast<double>(p.draws) / p.games_played) * 100.0 : 0.0;
         out << std::format("{},{:.2f},{:.2f},{},{:.2f},{:.2f}\n", p.name, p.rating, p.error, p.games_played, score_pct, draw_pct);
     }
+    out.flush();
+    if (!out) {
+        throw std::runtime_error("Failed to write CSV output: " + path.string());
+    }
 }
 
 void write_json(const RatingResult& result, const std::filesystem::path& path) {
@@ -74,6 +78,9 @@ void write_json(const RatingResult& result, const std::filesystem::path& path) {
         out << "\n";
     }
     out << "  ]\n}\n";
+    if (!out) {
+        throw std::runtime_error("Failed to write JSON output: " + path.string());
+    }
 }
 
 } // namespace bayeselo

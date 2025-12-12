@@ -102,7 +102,7 @@ void print_help() {
         << "  --black-name <substr>       Require Black name contains substring\n"
         << "  --either-name <substr>      Require either name contains substring\n"
         << "  --exclude-name <substr>     Exclude games if either name contains substring\n"
-        << "  --result <1-0|0-1|1/2-1/2>  Filter by result\n"
+        << "  --result <1-0|0-1|1/2-1/2> Filter by result\n"
         << "  --termination <value>       Filter by Termination tag (case-insensitive)\n"
         << "  --require-complete          Skip games missing required metadata/result\n"
         << "  --skip-empty                Skip games with empty/unknown result\n"
@@ -179,7 +179,7 @@ CliOptions parse_cli(int argc, char** argv) {
         if (arg == "--threads") {
             std::size_t threads = 0;
             if (!parse_size_t_arg(arg, i, threads)) {
-                std::cerr << "Invalid value for --threads: expected integer in [1,1024]\n";
+                std::cerr << "Invalid value for --threads\n";
                 std::exit(1);
             }
             if (threads == 0 || threads > 1024) {

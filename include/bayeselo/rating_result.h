@@ -1,7 +1,6 @@
 #pragma once
 
 #include "game.h"
-#include <map>
 #include <string>
 #include <vector>
 
@@ -13,4 +12,3 @@ struct RatingResult {
 };
 
 } // namespace bayeselo
-
