@@ -106,7 +106,7 @@ void print_help() {
         << "  --black-name <substr>       Require Black name contains substring\n"
         << "  --either-name <substr>      Require either name contains substring\n"
         << "  --exclude-name <substr>     Exclude games if either name contains substring\n"
-        << "  --result <1-0|0-1|1/2-1/2> Filter by result\n"
+        << "  --result <1-0|0-1|draw|1/2-1/2> Filter by result\n"
         << "  --termination <value>       Filter by Termination tag (case-insensitive)\n"
         << "  --require-complete          Skip games missing required metadata/result\n"
         << "  --skip-empty                Skip games with empty/unknown result\n"
@@ -269,7 +269,14 @@ CliOptions parse_cli(int argc, char** argv) {
             if (!require_value(arg, i)) {
                 std::exit(1);
             }
-            options.filters.result_filter = argv[++i];
+            std::string rf = argv[++i];
+            std::transform(rf.begin(), rf.end(), rf.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (rf == "1-0" || rf == "0-1" || rf == "draw" || rf == "1/2-1/2") {
+                options.filters.result_filter = rf;
+            } else {
+                std::cerr << "Invalid value for --result: " << argv[i] << "\n";
+                std::exit(1);
+            }
             continue;
         }
         if (arg == "--termination") {
@@ -445,16 +452,16 @@ int main(int argc, char** argv) {
 
                     std::size_t w_idx = 0;
                     std::size_t b_idx = 0;
-                    bool white_missing = false;
-                    bool black_missing = false;
-                    std::size_t name_bytes_needed = 0;
-
                     {
                         std::scoped_lock lock(games_mutex);
                         if (options.max_games && accepted.load(std::memory_order_acquire) >= *options.max_games) {
                             max_reached.store(true, std::memory_order_relaxed);
                             break;
                         }
+                        std::size_t name_bytes_needed = 0;
+                        bool white_missing = false;
+                        bool black_missing = false;
+
                         auto itw = name_index.find(g.meta.white);
                         if (itw == name_index.end()) {
                             white_missing = true;
@@ -469,35 +476,21 @@ int main(int argc, char** argv) {
                         } else {
                             b_idx = itb->second;
                         }
-                    }
 
-                    if (name_bytes_needed > 0) {
-                        if (!reserve_bytes(name_bytes_needed)) {
-                            break;
-                        }
-                    }
-
-                    {
-                        std::scoped_lock lock(games_mutex);
-                        if (white_missing) {
-                            auto itw = name_index.find(g.meta.white);
-                            if (itw == name_index.end()) {
-                                w_idx = player_names.size();
-                                name_index[g.meta.white] = w_idx;
-                                player_names.push_back(g.meta.white);
-                            } else {
-                                w_idx = itw->second;
+                        if (name_bytes_needed > 0) {
+                            if (!reserve_bytes(name_bytes_needed)) {
+                                break;
                             }
+                        }
+                        if (white_missing) {
+                            w_idx = player_names.size();
+                            name_index[g.meta.white] = w_idx;
+                            player_names.push_back(g.meta.white);
                         }
                         if (black_missing) {
-                            auto itb = name_index.find(g.meta.black);
-                            if (itb == name_index.end()) {
-                                b_idx = player_names.size();
-                                name_index[g.meta.black] = b_idx;
-                                player_names.push_back(g.meta.black);
-                            } else {
-                                b_idx = itb->second;
-                            }
+                            b_idx = player_names.size();
+                            name_index[g.meta.black] = b_idx;
+                            player_names.push_back(g.meta.black);
                         }
                     }
 
@@ -506,6 +499,10 @@ int main(int argc, char** argv) {
                         score = 1.0;
                     } else if (g.result.outcome == GameResult::Outcome::BlackWin) {
                         score = 0.0;
+                    }
+                    if (options.max_games && accepted.load(std::memory_order_acquire) >= *options.max_games) {
+                        max_reached.store(true, std::memory_order_relaxed);
+                        break;
                     }
                     if (!reserve_bytes(pairing_bytes)) {
                         break;

@@ -94,7 +94,7 @@ std::optional<std::vector<Game>> parse_pgn_chunk(const std::filesystem::path& fi
     std::string buffer(length, '\0');
     in.seekg(static_cast<std::streamoff>(start), std::ios::beg);
     in.read(buffer.data(), static_cast<std::streamoff>(length));
-    if (!in) return std::nullopt;
+    if (!in || static_cast<std::size_t>(in.gcount()) != length) return std::nullopt;
 
     Game current;
     bool in_headers = true;
