@@ -63,7 +63,7 @@ void print_help() {
         << "\nNotes:\n"
         << "  - Provide one or more PGN files to rate. Games are filtered before rating.\n"
         << "  - Size suffixes: k=KiB, m=MiB, g=GiB. Duration suffixes: s, m, h.\n"
-        << "  - When --keep-moves is omitted, compact pairings are used for lower memory.\n";
+        << "  - When --keep-moves is omitted, moves are discarded after ply counting and only compact pairings/results are retained, reducing memory.\n";
 }
 
 CliOptions parse_cli(int argc, char** argv) {

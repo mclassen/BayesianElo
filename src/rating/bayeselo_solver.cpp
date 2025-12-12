@@ -89,6 +89,7 @@ RatingResult BayesEloSolver::solve(const std::vector<Pairing>& pairings, const s
     constexpr double hessian_reg = 1e-6; // Diagonal regularizer to avoid singular Hessian.
     constexpr double denom_reg = 1e-9;   // Extra guard for divide-by-zero.
     constexpr double error_scale = 40.0; // Scales inverse-Hessian uncertainty to Elo points.
+    constexpr double min_variance = 1e-6; // Caps error for near-zero information games.
 
     for (int iter = 0; iter < max_iterations; ++iter) {
         std::vector<double> gradient(ratings.size(), 0.0);
@@ -126,7 +127,7 @@ RatingResult BayesEloSolver::solve(const std::vector<Pairing>& pairings, const s
 
     for (std::size_t i = 0; i < result.players.size(); ++i) {
         result.players[i].rating = ratings[i];
-        result.players[i].error = variance[i] > 0 ? std::sqrt(1.0 / variance[i]) * error_scale : 0.0;
+        result.players[i].error = variance[i] > 0 ? std::sqrt(1.0 / std::max(variance[i], min_variance)) * error_scale : 0.0;
         result.players[i].opponent_rating_sum = opponent_rating_sum[i]; // Sum of opponents' ratings across games.
     }
 

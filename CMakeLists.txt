@@ -49,6 +49,10 @@ add_executable(rating_tests tests/rating_tests.cpp)
 target_link_libraries(rating_tests PRIVATE bayeselo_lib)
 add_test(NAME rating_tests COMMAND rating_tests)
 
+add_executable(size_parse_tests tests/size_parse_tests.cpp)
+target_link_libraries(size_parse_tests PRIVATE bayeselo_lib)
+add_test(NAME size_parse_tests COMMAND size_parse_tests)
+
 add_executable(bench_parser tests/bench_parser.cpp)
 target_link_libraries(bench_parser PRIVATE bayeselo_lib)
 add_test(NAME bench_parser COMMAND bench_parser)

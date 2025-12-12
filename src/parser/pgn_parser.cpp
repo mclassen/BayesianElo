@@ -125,7 +125,7 @@ std::vector<Game> parse_pgn_chunk(const std::filesystem::path& file, std::size_t
         } else if (line_view.front() == '[') {
             auto tag_line = parse_tag_line(line_view);
             if (tag_line) {
-                auto [key, value] = split_tag(*tag_line);
+                const auto& [key, value] = split_tag(*tag_line);
                 if (key == "White") current.meta.white = value;
                 else if (key == "Black") current.meta.black = value;
                 else if (key == "Result") current.result.outcome = outcome_from_result(value);

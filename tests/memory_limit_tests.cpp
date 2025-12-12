@@ -2,10 +2,10 @@
 #include "bayeselo/filters.h"
 
 #include <atomic>
-#include <cassert>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <system_error>
 #include <vector>
 
 int main() {
@@ -25,6 +25,17 @@ int main() {
 1. d4 d5 0-1
 )";
     const std::string path = "temp_memory_limit.pgn";
+    struct TempFileGuard {
+        std::filesystem::path path;
+        ~TempFileGuard() {
+            std::error_code ec;
+            std::filesystem::remove(path, ec);
+        }
+    } guard{path};
+    auto fail = [&](const std::string& msg) {
+        std::cerr << msg << "\n";
+        return 1;
+    };
     {
         std::ofstream out(path, std::ios::binary);
         out << content;
@@ -39,17 +50,16 @@ int main() {
         // simulate default move-trimming behavior
         g.moves.clear();
         g.moves.shrink_to_fit();
-        assert(g.moves.empty());
+        if (!g.moves.empty()) return fail("expected moves cleared");
         if (!bayeselo::passes_filters(g, cfg)) continue;
         if (accepted.load() >= 1) break; // simulate --max-games=1
         kept.push_back(std::move(g));
         accepted.fetch_add(1);
     }
 
-    assert(kept.size() == 1);
-    assert(kept[0].meta.white == "A");
-    assert(kept[0].result.outcome == bayeselo::GameResult::Outcome::WhiteWin);
+    if (kept.size() != 1) return fail("expected kept.size()==1, got " + std::to_string(kept.size()));
+    if (kept[0].meta.white != "A") return fail("expected white A, got " + kept[0].meta.white);
+    if (kept[0].result.outcome != bayeselo::GameResult::Outcome::WhiteWin) return fail("expected outcome WhiteWin");
     std::cout << "memory limit tests passed\n";
-    std::filesystem::remove(path);
     return 0;
 }
