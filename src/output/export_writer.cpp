@@ -1,5 +1,7 @@
 #include "export_writer.h"
 
+#include <cerrno>
+#include <cstring>
 #include <format>
 #include <fstream>
 #include <stdexcept>
@@ -35,7 +37,7 @@ std::string escape_json(std::string_view s) {
 void write_csv(const RatingResult& result, const std::filesystem::path& path) {
     std::ofstream out(path);
     if (!out) {
-        throw std::runtime_error("Failed to open CSV output: " + path.string());
+        throw std::runtime_error("Failed to open CSV output: " + path.string() + " (" + std::strerror(errno) + ")");
     }
     out << "Player,Elo,Error,Games,ScorePct,DrawPct\n";
     for (const auto& p : result.players) {
@@ -48,7 +50,7 @@ void write_csv(const RatingResult& result, const std::filesystem::path& path) {
 void write_json(const RatingResult& result, const std::filesystem::path& path) {
     std::ofstream out(path);
     if (!out) {
-        throw std::runtime_error("Failed to open JSON output: " + path.string());
+        throw std::runtime_error("Failed to open JSON output: " + path.string() + " (" + std::strerror(errno) + ")");
     }
     out << "{\n  \"players\": [\n";
     for (std::size_t i = 0; i < result.players.size(); ++i) {

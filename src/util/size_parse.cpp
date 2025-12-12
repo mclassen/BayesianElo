@@ -21,7 +21,7 @@ std::optional<std::size_t> parse_size(std::string_view text) {
     std::string number_part = (suffix == '\0') ? std::string(text) : std::string(text.substr(0, text.size() - 1));
     if (number_part.empty()) return std::nullopt;
     if (number_part.front() == '-') return std::nullopt;
-    if (!std::all_of(number_part.begin(), number_part.end(), [](char c) { return std::isdigit(static_cast<unsigned char>(c)); })) {
+    if (!std::all_of(number_part.begin(), number_part.end(), [](char c) { return c >= '0' && c <= '9'; })) {
         return std::nullopt;
     }
     try {

@@ -51,6 +51,8 @@ int main() {
                            [](const auto& p) { return p.name == "Alpha"; });
     if (it == anchored.players.end()) return fail("anchored solve missing Alpha");
     if (std::abs(it->rating - anchor_rating) > 1e-9) return fail("Alpha not anchored to rating");
+    if (anchored.players.size() != res.players.size()) return fail("anchored solve player count mismatch");
+    if (anchored.players[0].name != res.players[0].name) return fail("anchored ordering changed unexpectedly");
 
     // Non-existent anchor should behave like no anchor.
     auto missing_anchor = solver.solve(games, std::optional<std::string>{"NoSuchPlayer"}, 999.0);

@@ -348,6 +348,7 @@ int main(int argc, char** argv) {
                     accepted.fetch_add(1, std::memory_order_relaxed);
                     return true;
                 }
+                int attempts = 0;
                 std::size_t current = accepted.load(std::memory_order_acquire);
                 while (true) {
                     if (current >= *options.max_games) {
@@ -355,6 +356,9 @@ int main(int argc, char** argv) {
                     }
                     if (accepted.compare_exchange_weak(current, current + 1, std::memory_order_acq_rel, std::memory_order_acquire)) {
                         return true;
+                    }
+                    if (++attempts % 8 == 0) {
+                        std::this_thread::yield();
                     }
                 }
             };

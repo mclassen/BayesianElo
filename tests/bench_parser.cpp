@@ -13,7 +13,7 @@
 
 namespace {
 
-std::size_t env_size_bytes(const char* name, std::size_t fallback) {
+std::size_t parse_env_size(const char* name, std::size_t fallback) {
     if (const char* val = std::getenv(name)) {
         return bayeselo::parse_size_or(val, fallback);
     }
@@ -82,8 +82,8 @@ int main(int argc, char** argv) {
     }
 
     // Env overrides (bytes or with suffixes)
-    target_bytes = env_size_bytes("BENCH_PGN_MB", target_bytes);
-    chunk_bytes = env_size_bytes("BENCH_CHUNK_BYTES", chunk_bytes);
+    target_bytes = parse_env_size("BENCH_PGN_MB", target_bytes);
+    chunk_bytes = parse_env_size("BENCH_CHUNK_BYTES", chunk_bytes);
 
     std::filesystem::path tmp_dir;
     try {
