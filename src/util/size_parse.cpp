@@ -40,6 +40,7 @@ std::optional<std::size_t> parse_size(std::string_view text) {
         // Compare before multiplying to avoid overflow even when size_t < unsigned long long.
         const unsigned long long max_size = static_cast<unsigned long long>(std::numeric_limits<std::size_t>::max());
         if (number > max_size) {
+            // Without this check, narrowing to size_t would wrap and could bypass the divide-by-multiplier check.
             return std::nullopt;
         }
         if (static_cast<std::size_t>(number) > std::numeric_limits<std::size_t>::max() / multiplier) {

@@ -398,7 +398,7 @@ int main(int argc, char** argv) {
                 return true;
             }
             if (++attempts % 8 == 0) {
-                std::this_thread::yield(); // Simple spin/yield was chosen over heavier primitives; see PR thread.
+                std::this_thread::yield(); // Spin/yield is sufficient for low contention and avoids heavier synchronization overhead.
             }
         }
     };

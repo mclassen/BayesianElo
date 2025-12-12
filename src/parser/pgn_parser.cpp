@@ -132,6 +132,12 @@ std::optional<std::vector<Game>> parse_pgn_chunk(const std::filesystem::path& fi
     bool in_headers = true;
     std::string move_text;
 
+    auto has_non_space = [](std::string_view text) -> bool {
+        return std::any_of(text.begin(), text.end(), [](unsigned char ch) {
+            return std::isspace(ch) == 0;
+        });
+    };
+
     auto flush_game = [&]() {
         current.moves = tokenize_moves(move_text);
         current.ply_count = static_cast<std::uint32_t>(current.moves.size());
@@ -159,9 +165,14 @@ std::optional<std::vector<Game>> parse_pgn_chunk(const std::filesystem::path& fi
             line_view.remove_suffix(1);
         }
 
-        if (line_view.empty()) {
+        const bool is_blank = line_view.empty() || std::all_of(line_view.begin(), line_view.end(), [](unsigned char ch) {
+            return std::isspace(ch) != 0;
+        });
+        if (is_blank) {
             if (!in_headers) {
-                flush_game();
+                if (has_non_space(move_text)) {
+                    flush_game();
+                }
             }
         } else if (line_view.front() == '[') {
             auto tag_line = parse_tag_line(line_view);
@@ -195,7 +206,7 @@ std::optional<std::vector<Game>> parse_pgn_chunk(const std::filesystem::path& fi
         }
         pos = line_end + 1;
     }
-    if (!move_text.empty()) {
+    if (has_non_space(move_text)) {
         flush_game();
     }
     return games;
