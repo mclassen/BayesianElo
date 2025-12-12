@@ -1,0 +1,1 @@
+- Convert the existing ad-hoc unit tests to a proper unit testing framework (e.g., GoogleTest) and integrate it into the build/ctest workflow.

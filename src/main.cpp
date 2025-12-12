@@ -1,0 +1,560 @@
+#include "bayeselo/duration.h"
+#include "bayeselo/filters.h"
+#include "bayeselo/game.h"
+#include "bayeselo/rating_result.h"
+#include "bayeselo/size_parse.h"
+#include "version.h"
+#include "output/export_writer.h"
+#include "output/terminal_output.h"
+#include "parser/chunk_splitter.h"
+#include "parser/pgn_parser.h"
+#include "rating/bayeselo_solver.h"
+#include "util/thread_pool.h"
+
+#include <algorithm>
+#include <atomic>
+#include <filesystem>
+#include <iostream>
+#include <limits>
+#include <mutex>
+#include <optional>
+#include <thread>
+#include <cctype>
+#include <vector>
+
+using namespace bayeselo;
+
+struct CliOptions {
+    std::vector<std::filesystem::path> files;
+    FilterConfig filters;
+    std::optional<std::filesystem::path> csv;
+    std::optional<std::filesystem::path> json;
+    std::size_t threads{std::thread::hardware_concurrency()};
+    std::optional<std::size_t> max_games;
+    bool keep_moves{false};
+    std::optional<std::size_t> max_bytes;
+};
+
+namespace {
+
+bool has_pgn_extension(const std::filesystem::path& path) {
+    auto ext = path.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return ext == ".pgn";
+}
+
+void append_pgn_files_from_dir(const std::filesystem::path& dir, std::vector<std::filesystem::path>& target) {
+    std::error_code ec;
+    if (!std::filesystem::exists(dir, ec)) {
+        std::cerr << "Directory not found: " << dir << "\n";
+        return;
+    }
+    if (!std::filesystem::is_directory(dir, ec)) {
+        std::cerr << "Not a directory: " << dir << "\n";
+        return;
+    }
+    std::size_t added = 0;
+    std::filesystem::recursive_directory_iterator it(dir, ec), end;
+    if (ec) {
+        std::cerr << "Failed to scan directory " << dir << ": " << ec.message() << "\n";
+        return;
+    }
+    for (; it != end; it.increment(ec)) {
+        if (ec) {
+            std::cerr << "Error while scanning " << dir << ": " << ec.message() << "\n";
+            break;
+        }
+        if (!it->is_regular_file()) {
+            continue;
+        }
+        if (!has_pgn_extension(it->path())) {
+            continue;
+        }
+        target.push_back(it->path());
+        ++added;
+    }
+    if (added == 0) {
+        std::cerr << "No PGN files found under " << dir << "\n";
+    }
+}
+
+} // namespace
+
+void print_help() {
+    std::cout
+        << "Bayesian Elo PGN rating tool\n"
+        << "Inspired by BayesElo by Rémi Coulom (http://www.remi-coulom.fr/Bayesian-Elo)\n"
+        << "Usage: elo_rating [options] file1.pgn file2.pgn ...\n\n"
+        << "Options:\n"
+        << "  -h, --help                  Show this help message and exit\n"
+        << "  --version                   Print version information and exit\n"
+        << "  --threads <n>               Number of worker threads (0=auto, default: hardware concurrency)\n"
+        << "  --csv <path>                Write ratings table as CSV\n"
+        << "  --json <path>               Write ratings table as JSON\n"
+        << "  --pgn-dir <path>            Recursively add all .pgn files under directory\n"
+        << "  --max-games <n>             Stop after N accepted games\n"
+        << "  --max-size <bytes|k|m|g>    Soft cap on internal memory estimate (k=KiB, m=MiB, g=GiB)\n"
+        << "  --keep-moves                Retain SAN move text (otherwise dropped after ply counting)\n"
+        << "\nFilters:\n"
+        << "  --min-plies <n>             Minimum plies (half-moves)\n"
+        << "  --max-plies <n>             Maximum plies (half-moves)\n"
+        << "  --min-moves <n>             Minimum moves (converted to plies)\n"
+        << "  --max-moves <n>             Maximum moves (converted to plies)\n"
+        << "  --min-time <dur>            Minimum duration; accepts seconds or suffix h/m/s (e.g. 300, 5m, 1h)\n"
+        << "  --max-time <dur>            Maximum duration; e.g. \"300+2\" uses only the base time (300); increments are ignored\n"
+        << "  --white-name <substr>       Require White name contains substring\n"
+        << "  --black-name <substr>       Require Black name contains substring\n"
+        << "  --either-name <substr>      Require either name contains substring\n"
+        << "  --exclude-name <substr>     Exclude games if either name contains substring\n"
+        << "  --result <1-0|0-1|draw|1/2-1/2> Filter by result\n"
+        << "  --termination <value>       Filter by Termination tag (case-insensitive)\n"
+        << "  --require-complete          Skip games missing required metadata/result\n"
+        << "  --skip-empty                Skip games with empty/unknown result\n"
+        << "\nNotes:\n"
+        << "  - Provide one or more PGN files to rate. Games are filtered before rating.\n"
+        << "  - Size suffixes: k=KiB, m=MiB, g=GiB. Duration suffixes: s, m, h.\n"
+        << "  - When --keep-moves is omitted, moves are discarded after ply counting and only compact pairings/results are retained, reducing memory.\n"
+        << "  - Use --keep-moves if you plan to export move text or perform move-level analysis later.\n";
+}
+
+CliOptions parse_cli(int argc, char** argv) {
+    CliOptions options;
+    constexpr std::size_t kMaxThreadMultiplier = 8; // Allow oversubscription for IO-bound workloads.
+    const std::size_t max_threads = std::max<std::size_t>(
+        1024, static_cast<std::size_t>(std::max(1u, std::thread::hardware_concurrency())) * kMaxThreadMultiplier);
+    auto require_value = [&](const std::string& opt, int i) {
+        if (i + 1 >= argc) {
+            std::cerr << opt << " requires a value\n";
+            return false;
+        }
+        return true;
+    };
+    auto parse_size_t_arg = [&](const std::string& opt, int& i, std::size_t& out) {
+        if (!require_value(opt, i)) {
+            return false;
+        }
+        const char* val = argv[++i];
+        try {
+            out = static_cast<std::size_t>(std::stoull(val));
+        } catch (const std::exception&) {
+            std::cerr << "Invalid value for " << opt << ": " << val << "\n";
+            return false;
+        }
+        return true;
+    };
+    auto parse_uint32_arg = [&](const std::string& opt, int& i, std::uint32_t& out) {
+        if (!require_value(opt, i)) {
+            return false;
+        }
+        const char* val = argv[++i];
+        try {
+            unsigned long v = std::stoul(val);
+            if (v > std::numeric_limits<std::uint32_t>::max()) {
+                throw std::out_of_range("too large");
+            }
+            out = static_cast<std::uint32_t>(v);
+        } catch (const std::exception&) {
+            std::cerr << "Invalid value for " << opt << ": " << val << "\n";
+            return false;
+        }
+        return true;
+    };
+    auto parse_duration_arg = [&](const std::string& opt, int& i, std::optional<double>& out) {
+        if (!require_value(opt, i)) {
+            return false;
+        }
+        const char* val = argv[++i];
+        try {
+            out = parse_duration_to_seconds(val);
+        } catch (const std::exception& ex) {
+            std::cerr << "Invalid value for " << opt << ": " << val << " (" << ex.what() << ")\n";
+            return false;
+        }
+        return true;
+    };
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--help" || arg == "-h") {
+            print_help();
+            std::exit(0);
+        }
+        if (arg == "--version") {
+            std::cout << "Bayesian Elo PGN CLI " << BAYESELO_VERSION_STRING
+                      << " (" << BAYESELO_GIT_HASH << ")\n";
+            std::exit(0);
+        }
+        if (arg == "--threads") {
+            std::size_t threads = 0;
+            if (!parse_size_t_arg(arg, i, threads)) {
+                std::cerr << "Invalid value for --threads\n";
+                std::exit(1);
+            }
+            if (threads > max_threads) {
+                std::cerr << "--threads must be in [0," << max_threads << "] (0 means auto-detect)\n";
+                std::exit(1);
+            }
+            options.threads = threads;
+            continue;
+        }
+        if (arg == "--min-plies") {
+            std::uint32_t v = 0;
+            if (!parse_uint32_arg(arg, i, v)) {
+                std::exit(1);
+            }
+            options.filters.min_plies = v;
+            continue;
+        }
+        if (arg == "--max-plies") {
+            std::uint32_t v = 0;
+            if (!parse_uint32_arg(arg, i, v)) {
+                std::exit(1);
+            }
+            options.filters.max_plies = v;
+            continue;
+        }
+        if (arg == "--min-moves") {
+            std::uint32_t v = 0;
+            if (!parse_uint32_arg(arg, i, v)) {
+                std::exit(1);
+            }
+            options.filters.min_plies = v * 2;
+            continue;
+        }
+        if (arg == "--max-moves") {
+            std::uint32_t v = 0;
+            if (!parse_uint32_arg(arg, i, v)) {
+                std::exit(1);
+            }
+            options.filters.max_plies = v * 2;
+            continue;
+        }
+        if (arg == "--min-time") {
+            if (!parse_duration_arg(arg, i, options.filters.min_time_seconds)) {
+                std::exit(1);
+            }
+            continue;
+        }
+        if (arg == "--max-time") {
+            if (!parse_duration_arg(arg, i, options.filters.max_time_seconds)) {
+                std::exit(1);
+            }
+            continue;
+        }
+        if (arg == "--white-name") {
+            if (!require_value(arg, i)) {
+                std::exit(1);
+            }
+            options.filters.white_name = argv[++i];
+            continue;
+        }
+        if (arg == "--black-name") {
+            if (!require_value(arg, i)) {
+                std::exit(1);
+            }
+            options.filters.black_name = argv[++i];
+            continue;
+        }
+        if (arg == "--either-name") {
+            if (!require_value(arg, i)) {
+                std::exit(1);
+            }
+            options.filters.either_name = argv[++i];
+            continue;
+        }
+        if (arg == "--exclude-name") {
+            if (!require_value(arg, i)) {
+                std::exit(1);
+            }
+            options.filters.exclude_name = argv[++i];
+            continue;
+        }
+        if (arg == "--result") {
+            if (!require_value(arg, i)) {
+                std::exit(1);
+            }
+            std::string rf = argv[++i];
+            std::transform(rf.begin(), rf.end(), rf.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (rf == "1-0" || rf == "0-1" || rf == "draw" || rf == "1/2-1/2") {
+                options.filters.result_filter = rf;
+            } else {
+                std::cerr << "Invalid value for --result: " << argv[i] << "\n";
+                std::exit(1);
+            }
+            continue;
+        }
+        if (arg == "--termination") {
+            if (!require_value(arg, i)) {
+                std::exit(1);
+            }
+            options.filters.termination = argv[++i];
+            continue;
+        }
+        if (arg == "--require-complete") {
+            options.filters.require_complete = true;
+            continue;
+        }
+        if (arg == "--skip-empty") {
+            options.filters.skip_empty = true;
+            continue;
+        }
+        if (arg == "--csv") {
+            if (!require_value(arg, i)) {
+                std::exit(1);
+            }
+            options.csv = argv[++i];
+            continue;
+        }
+        if (arg == "--json") {
+            if (!require_value(arg, i)) {
+                std::exit(1);
+            }
+            options.json = argv[++i];
+            continue;
+        }
+        if (arg == "--pgn-dir") {
+            if (!require_value(arg, i)) {
+                std::exit(1);
+            }
+            append_pgn_files_from_dir(argv[++i], options.files);
+            continue;
+        }
+        if (arg == "--max-games") {
+            std::size_t v = 0;
+            if (!parse_size_t_arg(arg, i, v)) {
+                std::exit(1);
+            }
+            options.max_games = v;
+            continue;
+        }
+        if (arg == "--keep-moves") {
+            options.keep_moves = true;
+            continue;
+        }
+        if (arg == "--max-size") {
+            if (!require_value(arg, i)) {
+                std::exit(1);
+            }
+            options.max_bytes = parse_size(argv[++i]);
+            if (!options.max_bytes) {
+                std::cerr << "Invalid value for --max-size: " << argv[i] << "\n";
+                std::exit(1);
+            }
+            continue;
+        }
+        if (!arg.empty() && arg.front() != '-') {
+            std::filesystem::path candidate = arg;
+            std::error_code ec;
+            if (std::filesystem::is_directory(candidate, ec)) {
+                append_pgn_files_from_dir(candidate, options.files);
+            } else {
+                options.files.push_back(candidate);
+            }
+            continue;
+        }
+    }
+    return options;
+}
+
+int main(int argc, char** argv) {
+    auto options = parse_cli(argc, argv);
+    if (options.files.empty()) {
+        print_help();
+        return 1;
+    }
+
+    // 1 MiB chunks: large enough to amortize file I/O overhead, small enough to keep parallelism granular.
+    constexpr std::size_t default_chunk_bytes = 1u << 20;
+    std::vector<ChunkRange> chunks;
+    chunks.reserve(options.files.size());
+    for (const auto& file : options.files) {
+        auto ranges = split_pgn_file(file, default_chunk_bytes);
+        chunks.insert(chunks.end(), ranges.begin(), ranges.end());
+    }
+
+    ThreadPool pool(options.threads);
+    std::mutex games_mutex;
+    std::vector<Game> games;
+    std::atomic_size_t accepted{0};
+    std::atomic_bool max_reached{false};
+    std::vector<Pairing> pairings;
+    std::vector<std::string> player_names;
+    std::unordered_map<std::string, std::size_t> name_index;
+    std::atomic_size_t estimated_bytes{0};
+    const bool use_pairings = !options.keep_moves;
+    constexpr std::size_t kPairingBytes = sizeof(Pairing); // Heuristic; we intentionally avoid extra margins to keep limits intuitive (see PR discussion).
+    constexpr std::size_t kNameOverhead = sizeof(std::string); // Same here: this tracks control blocks only so --max-size is a soft cap by design.
+    auto try_add_bounded = [&](std::atomic_size_t& counter, std::size_t max_value, std::size_t delta) -> bool {
+        if (delta > max_value) {
+            return false;
+        }
+        int attempts = 0;
+        while (true) {
+            auto current = counter.load(std::memory_order_acquire);
+            if (current > max_value - delta) {
+                return false;
+            }
+            auto next = current + delta;
+            if (counter.compare_exchange_weak(current, next, std::memory_order_acq_rel, std::memory_order_acquire)) {
+                return true;
+            }
+            if (++attempts % 8 == 0) {
+                std::this_thread::yield(); // Spin/yield is sufficient for low contention and avoids heavier synchronization overhead.
+            }
+        }
+    };
+    auto reserve_bytes = [&](std::size_t bytes) -> bool {
+        if (!options.max_bytes) {
+            return true;
+        }
+        if (!try_add_bounded(estimated_bytes, *options.max_bytes, bytes)) {
+            max_reached.store(true, std::memory_order_relaxed);
+            return false;
+        }
+        return true;
+    };
+
+    for (const auto& chunk : chunks) {
+        pool.enqueue([&, chunk]() {
+            auto parsed = parse_pgn_chunk(chunk.file, chunk.start_offset, chunk.end_offset);
+            std::vector<Game> local_games;
+            std::vector<Pairing> local_pairs;
+            if (!parsed) {
+                std::cerr << "Failed to parse chunk: " << chunk.file
+                          << " (offsets " << chunk.start_offset << "-" << chunk.end_offset << ")\n";
+                return;
+            }
+            local_games.reserve(parsed->size());
+            local_pairs.reserve(parsed->size());
+
+            auto try_accept_game = [&]() -> bool {
+                if (!options.max_games) {
+                    accepted.fetch_add(1, std::memory_order_relaxed);
+                    return true;
+                }
+                if (!try_add_bounded(accepted, *options.max_games, 1)) {
+                    return false;
+                }
+                return true;
+            };
+
+            for (auto& g : *parsed) {
+                if (!options.keep_moves) {
+                    g.moves.clear();
+                    g.moves.shrink_to_fit();
+                }
+                if (!passes_filters(g, options.filters)) {
+                    continue;
+                }
+
+                if (use_pairings) {
+                    if (g.result.outcome == GameResult::Outcome::Unknown) {
+                        continue;
+                    }
+
+                    std::size_t w_idx = 0;
+                    std::size_t b_idx = 0;
+                    {
+                        std::scoped_lock lock(games_mutex);
+                        if (options.max_games && accepted.load(std::memory_order_acquire) >= *options.max_games) {
+                            max_reached.store(true, std::memory_order_relaxed);
+                            break;
+                        }
+                        std::size_t name_bytes_needed = 0;
+                        bool white_missing = false;
+                        bool black_missing = false;
+
+                        auto itw = name_index.find(g.meta.white);
+                        if (itw == name_index.end()) {
+                            white_missing = true;
+                            name_bytes_needed += g.meta.white.size() + kNameOverhead;
+                        } else {
+                            w_idx = itw->second;
+                        }
+                        auto itb = name_index.find(g.meta.black);
+                        if (itb == name_index.end()) {
+                            black_missing = true;
+                            name_bytes_needed += g.meta.black.size() + kNameOverhead;
+                        } else {
+                            b_idx = itb->second;
+                        }
+
+                        if (name_bytes_needed > 0) {
+                            if (!reserve_bytes(name_bytes_needed)) {
+                                break;
+                            }
+                        }
+                        if (white_missing) {
+                            w_idx = player_names.size();
+                            name_index[g.meta.white] = w_idx;
+                            player_names.push_back(g.meta.white);
+                        }
+                        if (black_missing) {
+                            b_idx = player_names.size();
+                            name_index[g.meta.black] = b_idx;
+                            player_names.push_back(g.meta.black);
+                        }
+                    }
+
+                    double score = 0.5;
+                    if (g.result.outcome == GameResult::Outcome::WhiteWin) {
+                        score = 1.0;
+                    } else if (g.result.outcome == GameResult::Outcome::BlackWin) {
+                        score = 0.0;
+                    }
+                    if (!reserve_bytes(kPairingBytes)) {
+                        break;
+                    }
+                    if (!try_accept_game()) {
+                        max_reached.store(true, std::memory_order_relaxed);
+                        break;
+                    }
+
+                    local_pairs.push_back(Pairing{w_idx, b_idx, score});
+                } else {
+                    if (!try_accept_game()) {
+                        max_reached.store(true, std::memory_order_relaxed);
+                        break;
+                    }
+                    local_games.push_back(std::move(g));
+                }
+            }
+
+            if (!local_games.empty() || !local_pairs.empty()) {
+                std::scoped_lock lock(games_mutex);
+                if (!local_games.empty()) {
+                    games.insert(games.end(),
+                                 std::make_move_iterator(local_games.begin()),
+                                 std::make_move_iterator(local_games.end()));
+                }
+                if (!local_pairs.empty()) {
+                    pairings.insert(pairings.end(),
+                                    std::make_move_iterator(local_pairs.begin()),
+                                    std::make_move_iterator(local_pairs.end()));
+                }
+            }
+        });
+    }
+
+    pool.wait_for_completion();
+    pool.shutdown();
+
+    BayesEloSolver solver;
+    RatingResult ratings;
+    if (use_pairings) {
+        ratings = solver.solve(pairings, player_names);
+    } else {
+        ratings = solver.solve(games);
+    }
+
+    print_ratings(ratings);
+    if (max_reached.load(std::memory_order_relaxed)) {
+        std::cerr << "Reached limit (--max-games or --max-size); remaining parsed games were discarded.\n";
+    }
+    if (options.csv) {
+        write_csv(ratings, *options.csv);
+    }
+    if (options.json) {
+        write_json(ratings, *options.json);
+    }
+    return 0;
+}

@@ -1,0 +1,8 @@
+#pragma once
+
+#define BAYESELO_VERSION_MAJOR @pgn_elo_cli_VERSION_MAJOR@
+#define BAYESELO_VERSION_MINOR @pgn_elo_cli_VERSION_MINOR@
+#define BAYESELO_VERSION_PATCH @pgn_elo_cli_VERSION_PATCH@
+#define BAYESELO_VERSION_TWEAK @pgn_elo_cli_VERSION_TWEAK@
+#define BAYESELO_VERSION_STRING "@pgn_elo_cli_VERSION@"
+#define BAYESELO_GIT_HASH "@GIT_HASH@"
