@@ -387,11 +387,11 @@ int main(int argc, char** argv) {
         int attempts = 0;
         while (true) {
             auto current = estimated_bytes.load(std::memory_order_acquire);
-            auto next = current + bytes;
-            if (next > *options.max_bytes) {
+            if (current > *options.max_bytes - bytes) {
                 max_reached.store(true, std::memory_order_relaxed);
                 return false;
             }
+            auto next = current + bytes;
             if (estimated_bytes.compare_exchange_weak(current, next,
                                                       std::memory_order_acq_rel,
                                                       std::memory_order_acquire)) {
