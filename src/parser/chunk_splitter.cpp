@@ -24,6 +24,7 @@ std::vector<ChunkRange> split_pgn_file(const std::filesystem::path& file, std::s
         std::string line;
         std::streampos line_start = in.tellg();
         std::streampos pos = line_start;
+        constexpr std::string_view kEventPrefix = "[Event";
         std::size_t last_pos = tentative_end;
         bool found_event = false;
         std::streampos prev_pos = pos;
@@ -34,8 +35,8 @@ std::vector<ChunkRange> split_pgn_file(const std::filesystem::path& file, std::s
                 break; // no forward progress; bail out to avoid infinite loop
             }
             prev_pos = pos;
-            if (!line.empty() && line.rfind("[Event", 0) == 0) {
-                char after = line.size() > 6 ? line[6] : '\0';
+            if (!line.empty() && line.rfind(kEventPrefix, 0) == 0) {
+                char after = line.size() > kEventPrefix.size() ? line[kEventPrefix.size()] : '\0';
                 if (after != '\0' && after != '"' && !std::isspace(static_cast<unsigned char>(after))) {
                     line_start = pos;
                     continue;

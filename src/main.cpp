@@ -119,6 +119,8 @@ void print_help() {
 
 CliOptions parse_cli(int argc, char** argv) {
     CliOptions options;
+    const std::size_t max_threads = std::max<std::size_t>(
+        1024, static_cast<std::size_t>(std::max(1u, std::thread::hardware_concurrency())) * 8);
     auto require_value = [&](const std::string& opt, int i) {
         if (i + 1 >= argc) {
             std::cerr << opt << " requires a value\n";
@@ -186,8 +188,8 @@ CliOptions parse_cli(int argc, char** argv) {
                 std::cerr << "Invalid value for --threads\n";
                 std::exit(1);
             }
-            if (threads > 1024) {
-                std::cerr << "--threads must be in [0,1024] (0 means auto-detect)\n";
+            if (threads > max_threads) {
+                std::cerr << "--threads must be in [0," << max_threads << "] (0 means auto-detect)\n";
                 std::exit(1);
             }
             options.threads = threads;
@@ -380,27 +382,34 @@ int main(int argc, char** argv) {
     const bool use_pairings = !options.keep_moves;
     constexpr std::size_t pairing_bytes = sizeof(Pairing); // Heuristic; we intentionally avoid extra margins to keep limits intuitive (see PR discussion).
     constexpr std::size_t kNameOverhead = sizeof(std::string); // Same here: this tracks control blocks only so --max-size is a soft cap by design.
-    auto reserve_bytes = [&](std::size_t bytes) -> bool {
-        if (!options.max_bytes) {
-            return true;
+    auto try_add_bounded = [&](std::atomic_size_t& counter, std::size_t max_value, std::size_t delta) -> bool {
+        if (delta > max_value) {
+            return false;
         }
         int attempts = 0;
         while (true) {
-            auto current = estimated_bytes.load(std::memory_order_acquire);
-            if (current > *options.max_bytes - bytes) {
-                max_reached.store(true, std::memory_order_relaxed);
+            auto current = counter.load(std::memory_order_acquire);
+            if (current > max_value - delta) {
                 return false;
             }
-            auto next = current + bytes;
-            if (estimated_bytes.compare_exchange_weak(current, next,
-                                                      std::memory_order_acq_rel,
-                                                      std::memory_order_acquire)) {
+            auto next = current + delta;
+            if (counter.compare_exchange_weak(current, next, std::memory_order_acq_rel, std::memory_order_acquire)) {
                 return true;
             }
             if (++attempts % 8 == 0) {
                 std::this_thread::yield(); // Simple spin/yield was chosen over heavier primitives; see PR thread.
             }
         }
+    };
+    auto reserve_bytes = [&](std::size_t bytes) -> bool {
+        if (!options.max_bytes) {
+            return true;
+        }
+        if (!try_add_bounded(estimated_bytes, *options.max_bytes, bytes)) {
+            max_reached.store(true, std::memory_order_relaxed);
+            return false;
+        }
+        return true;
     };
 
     for (const auto& chunk : chunks) {
@@ -421,19 +430,10 @@ int main(int argc, char** argv) {
                     accepted.fetch_add(1, std::memory_order_relaxed);
                     return true;
                 }
-                int attempts = 0;
-                std::size_t current = accepted.load(std::memory_order_acquire);
-                while (true) {
-                    if (current >= *options.max_games) {
-                        return false;
-                    }
-                    if (accepted.compare_exchange_weak(current, current + 1, std::memory_order_acq_rel, std::memory_order_acquire)) {
-                        return true;
-                    }
-                    if (++attempts % 8 == 0) {
-                        std::this_thread::yield(); // Same deliberate policy as reserve_bytes: lightweight spin + yield.
-                    }
+                if (!try_add_bounded(accepted, *options.max_games, 1)) {
+                    return false;
                 }
+                return true;
             };
 
             for (auto& g : *parsed) {
