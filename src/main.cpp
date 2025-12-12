@@ -157,33 +157,37 @@ int main(int argc, char** argv) {
             auto parsed = parse_pgn_chunk(chunk.file, chunk.start_offset, chunk.end_offset);
             std::vector<Game> local_games;
             std::vector<Pairing> local_pairs;
-            local_games.reserve(parsed.size());
-            local_pairs.reserve(parsed.size());
+            if (!parsed) {
+                std::cerr << "Failed to parse chunk: " << chunk.file << "\n";
+                return;
+            }
+            local_games.reserve(parsed->size());
+            local_pairs.reserve(parsed->size());
 
             auto try_accept_game = [&]() -> bool {
                 if (!options.max_games) {
                     accepted.fetch_add(1, std::memory_order_relaxed);
                     return true;
                 }
-                std::size_t current = accepted.load(std::memory_order_relaxed);
+                std::size_t current = accepted.load(std::memory_order_acquire);
                 while (true) {
                     if (current >= *options.max_games) {
                         return false;
                     }
-                    if (accepted.compare_exchange_weak(current, current + 1, std::memory_order_relaxed, std::memory_order_relaxed)) {
+                    if (accepted.compare_exchange_weak(current, current + 1, std::memory_order_acq_rel, std::memory_order_acquire)) {
                         return true;
                     }
                 }
             };
 
-            for (auto& g : parsed) {
+            for (auto& g : *parsed) {
                 if (!options.keep_moves) {
                     g.moves.clear();
                     g.moves.shrink_to_fit();
                 }
                 if (!passes_filters(g, options.filters)) continue;
 
-                if (options.max_games && accepted.load(std::memory_order_relaxed) >= *options.max_games) {
+                if (options.max_games && accepted.load(std::memory_order_acquire) >= *options.max_games) {
                     max_reached.store(true, std::memory_order_relaxed);
                     break;
                 }

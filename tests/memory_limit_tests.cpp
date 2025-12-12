@@ -41,7 +41,9 @@ int main() {
         out << content;
     }
 
-    auto games = bayeselo::parse_pgn_chunk(path, 0, content.size());
+    auto games_opt = bayeselo::parse_pgn_chunk(path, 0, content.size());
+    if (!games_opt) return fail("parse_pgn_chunk returned nullopt");
+    auto games = std::move(*games_opt);
     bayeselo::FilterConfig cfg;
 
     std::atomic_size_t accepted{0};

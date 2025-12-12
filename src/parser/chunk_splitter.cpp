@@ -26,9 +26,14 @@ std::vector<ChunkRange> split_pgn_file(const std::filesystem::path& file, std::s
         std::streampos pos = line_start;
         std::size_t last_pos = tentative_end;
         bool found_event = false;
+        std::streampos prev_pos = pos;
         // Move to next [Event boundary
         while (std::getline(in, line)) {
             pos = in.tellg();
+            if (pos == prev_pos) {
+                break; // no forward progress; bail out to avoid infinite loop
+            }
+            prev_pos = pos;
             if (!line.empty() && line.rfind("[Event ", 0) == 0) {
                 auto event_pos = static_cast<std::size_t>(line_start);
                 if (event_pos > current_start) {
@@ -37,13 +42,13 @@ std::vector<ChunkRange> split_pgn_file(const std::filesystem::path& file, std::s
                 found_event = true;
                 break;
             }
-            if (pos == std::streampos(-1)) {
+            if (in.eof() || in.fail()) {
                 break;
             }
             last_pos = static_cast<std::size_t>(pos);
             line_start = pos;
         }
-        if (!found_event && pos == std::streampos(-1)) {
+        if (!found_event && (in.eof() || in.fail())) {
             tentative_end = total;
         } else if (!found_event) {
             tentative_end = last_pos;

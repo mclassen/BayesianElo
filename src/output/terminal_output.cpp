@@ -1,12 +1,26 @@
 #include "terminal_output.h"
 
+#include <cstdlib>
 #include <iomanip>
 #include <iostream>
+#ifdef _WIN32
+#include <io.h>
+#define isatty _isatty
+#define fileno _fileno
+#else
+#include <unistd.h>
+#endif
 
 namespace bayeselo {
 
 namespace {
+bool colors_enabled() {
+    if (std::getenv("NO_COLOR")) return false;
+    return isatty(fileno(stdout)) != 0;
+}
+
 std::string colorize(double rating, std::size_t rank) {
+    if (!colors_enabled()) return {};
     if (rank == 0) return "\033[1;32m"; // top
     if (rating < 0) return "\033[1;33m";
     return "\033[0m";

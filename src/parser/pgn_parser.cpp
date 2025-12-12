@@ -36,7 +36,9 @@ std::pair<std::string, std::string> split_tag(std::string_view tag_line) {
 
 std::vector<std::string> tokenize_moves(const std::string& text) {
     std::vector<std::string> moves;
+    moves.reserve(text.size() / 2);
     std::string token;
+    token.reserve(text.size());
     bool in_comment = false;
     int variation_depth = 0;
 
@@ -72,12 +74,12 @@ GameResult::Outcome outcome_from_result(const std::string& r) {
 
 } // namespace
 
-std::vector<Game> parse_pgn_chunk(const std::filesystem::path& file, std::size_t start, std::size_t end) {
+std::optional<std::vector<Game>> parse_pgn_chunk(const std::filesystem::path& file, std::size_t start, std::size_t end) {
     std::vector<Game> games;
     if (end <= start) return games;
 
     std::ifstream in(file, std::ios::binary);
-    if (!in) return games;
+    if (!in) return std::nullopt;
 
     in.seekg(0, std::ios::end);
     const auto total = static_cast<std::size_t>(in.tellg());
@@ -88,6 +90,7 @@ std::vector<Game> parse_pgn_chunk(const std::filesystem::path& file, std::size_t
     std::string buffer(length, '\0');
     in.seekg(static_cast<std::streamoff>(start), std::ios::beg);
     in.read(buffer.data(), static_cast<std::streamoff>(length));
+    if (!in) return std::nullopt;
 
     Game current;
     bool in_headers = true;

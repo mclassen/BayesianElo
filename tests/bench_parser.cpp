@@ -93,7 +93,11 @@ int main(int argc, char** argv) {
     std::size_t games = 0;
     for (const auto& c : chunks) {
         auto parsed = bayeselo::parse_pgn_chunk(c.file, c.start_offset, c.end_offset);
-        games += parsed.size();
+        if (!parsed) {
+            std::cerr << "failed to parse chunk " << c.file << "\n";
+            continue;
+        }
+        games += parsed->size();
     }
     const auto end = std::chrono::steady_clock::now();
     const std::chrono::duration<double> elapsed = end - start;

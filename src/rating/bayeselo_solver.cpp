@@ -58,6 +58,9 @@ RatingResult BayesEloSolver::solve(const std::vector<Game>& games, std::optional
     std::vector<std::string> names;
     names.reserve(result.players.size());
     for (const auto& p : result.players) names.push_back(p.name);
+    if (names.size() <= 1) {
+        return result; // Single-player data is not meaningful for Elo.
+    }
     return solve(pairings, names, anchor_player, anchor_rating);
 }
 
@@ -137,7 +140,8 @@ RatingResult BayesEloSolver::solve(const std::vector<Pairing>& pairings, const s
         for (std::size_t j = 0; j < n; ++j) {
             if (i == j) continue;
             double diff = ratings[i] - ratings[j];
-            // LOS uses half-scale to approximate P(r_i > r_j).
+            // LOS uses half-scale to approximate P(r_i > r_j): halving the Elo denominator
+            // is a common approximation for likelihood-of-superiority probability.
             double los = 1.0 / (1.0 + std::pow(10.0, -diff / (k_scale / 2.0)));
             result.los_matrix[i][j] = los;
         }

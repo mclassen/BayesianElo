@@ -40,7 +40,9 @@ int main() {
 
     std::vector<bayeselo::Game> games;
     try {
-        games = bayeselo::parse_pgn_chunk(path, 0, content.size());
+        auto parsed = bayeselo::parse_pgn_chunk(path, 0, content.size());
+        if (!parsed) return fail("parse_pgn_chunk returned nullopt");
+        games = std::move(*parsed);
     } catch (const std::exception& ex) {
         return fail(std::string("parse_pgn_chunk threw: ") + ex.what());
     }

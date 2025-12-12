@@ -3,8 +3,34 @@
 #include <format>
 #include <fstream>
 #include <stdexcept>
+#include <string>
 
 namespace bayeselo {
+
+namespace {
+std::string escape_json(std::string_view s) {
+    std::string out;
+    out.reserve(s.size() + 8);
+    for (unsigned char c : s) {
+        switch (c) {
+        case '\\': out += "\\\\"; break;
+        case '"': out += "\\\""; break;
+        case '\b': out += "\\b"; break;
+        case '\f': out += "\\f"; break;
+        case '\n': out += "\\n"; break;
+        case '\r': out += "\\r"; break;
+        case '\t': out += "\\t"; break;
+        default:
+            if (c < 0x20) {
+                out += std::format("\\u{:04x}", static_cast<int>(c));
+            } else {
+                out.push_back(static_cast<char>(c));
+            }
+        }
+    }
+    return out;
+}
+}
 
 void write_csv(const RatingResult& result, const std::filesystem::path& path) {
     std::ofstream out(path);
@@ -30,7 +56,7 @@ void write_json(const RatingResult& result, const std::filesystem::path& path) {
         double score_pct = p.games_played ? (p.score_sum / p.games_played) * 100.0 : 0.0;
         double draw_pct = p.games_played ? (p.draws / p.games_played) * 100.0 : 0.0;
         out << std::format("    {{\"name\": \"{}\", \"elo\": {:.2f}, \"error\": {:.2f}, \"games\": {}, \"score_pct\": {:.2f}, \"draw_pct\": {:.2f}}}",
-                          p.name, p.rating, p.error, p.games_played, score_pct, draw_pct);
+                          escape_json(p.name), p.rating, p.error, p.games_played, score_pct, draw_pct);
         if (i + 1 != result.players.size()) out << ",";
         out << "\n";
     }
