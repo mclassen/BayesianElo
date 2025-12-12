@@ -36,8 +36,10 @@ std::pair<std::string, std::string> split_tag(std::string_view tag_line) {
 
 std::vector<std::string> tokenize_moves(const std::string& text) {
     std::vector<std::string> moves;
-    moves.reserve(std::max<std::size_t>(4, text.size() / 2)); // heuristic: average SAN token is ~2 chars
+    // Reserve roughly half the characters for move tokens, but keep a small floor to avoid zero-capacity reserve.
+    moves.reserve(std::max<std::size_t>(4, text.size() / 2));
     std::string token;
+    // Tokens tend to be shorter than moves, so reserve ~1/4 of the text with a minimum to avoid immediate reallocs.
     token.reserve(std::max<std::size_t>(4, text.size() / 4));
     bool in_comment = false;
     int variation_depth = 0;

@@ -49,7 +49,7 @@ void ThreadPool::worker(std::stop_token token) {
         std::function<void()> task;
         {
             std::unique_lock lock(mutex_);
-            cv_.wait(lock, token, [this] { return stopping_ || !tasks_.empty(); });
+            cv_.wait(lock, token, [this, &token] { return token.stop_requested() || stopping_ || !tasks_.empty(); });
             if (token.stop_requested()) {
                 break;
             }

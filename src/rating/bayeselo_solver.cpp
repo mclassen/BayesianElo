@@ -86,12 +86,13 @@ RatingResult BayesEloSolver::solve(const std::vector<Pairing>& pairings, const s
         }
     }
 
-    constexpr double k_scale = 400.0; // Standard Elo scale: 400 pts implies ~10:1 expected score ratio (~0.91 vs 0.09 win prob).
+    // Solver constants mirror classic Elo/BayesElo conventions.
+    constexpr double k_scale = 400.0; // 400 pts difference ≈ 10:1 odds.
     const double ln10_div4 = std::log(10.0) / k_scale; // ln(10)/400 used in gradient update.
     constexpr int max_iterations = 50; // Fixed iteration cap for convergence.
     constexpr double hessian_reg = 1e-6; // Diagonal regularizer to avoid singular Hessian.
     constexpr double denom_reg = 1e-9;   // Extra guard for divide-by-zero.
-    constexpr double error_scale = 40.0; // Scales inverse-Hessian uncertainty to Elo points.
+    constexpr double error_scale = 40.0; // Error is reported on ~k_scale/10 granularity.
     constexpr double min_variance = 1e-6; // Caps error for near-zero information games.
 
     for (int iter = 0; iter < max_iterations; ++iter) {

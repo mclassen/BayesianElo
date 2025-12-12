@@ -50,7 +50,11 @@ void print_ratings(const RatingResult& result) {
                   << std::setw(6) << p.error << " | "
                   << std::setw(5) << p.games_played << " | "
                   << std::setw(6) << score_pct << "% | "
-                  << std::setw(6) << draw_pct << "%\033[0m\n";
+                  << std::setw(6) << draw_pct << "%";
+        if (!color.empty()) {
+            std::cout << "\033[0m";
+        }
+        std::cout << "\n";
     }
     std::cout.flags(old_flags);
     std::cout.precision(old_precision);

@@ -305,8 +305,8 @@ int main(int argc, char** argv) {
     std::unordered_map<std::string, std::size_t> name_index;
     std::atomic_size_t estimated_bytes{0};
     const bool use_pairings = !options.keep_moves;
-    constexpr std::size_t pairing_bytes = sizeof(Pairing);
-    constexpr std::size_t name_overhead = sizeof(std::string);
+    constexpr std::size_t pairing_bytes = sizeof(Pairing); // Approximate per-pairing footprint (object only, no allocator overhead).
+    constexpr std::size_t name_overhead = sizeof(std::string); // Rough estimate to track std::string control blocks; actual usage is higher.
     auto reserve_bytes = [&](std::size_t bytes) -> bool {
         if (!options.max_bytes) {
             return true;
@@ -371,10 +371,6 @@ int main(int argc, char** argv) {
                     std::size_t w_idx, b_idx;
                     {
                         std::scoped_lock lock(games_mutex);
-                        if (options.max_games && accepted.load(std::memory_order_acquire) >= *options.max_games) {
-                            max_reached.store(true, std::memory_order_relaxed);
-                            break;
-                        }
                         auto itw = name_index.find(g.meta.white);
                         if (itw == name_index.end()) {
                             if (!reserve_bytes(g.meta.white.size() + name_overhead)) {
