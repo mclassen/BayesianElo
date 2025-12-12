@@ -35,8 +35,8 @@ std::pair<std::string, std::string> split_tag(std::string_view tag_line) {
 }
 
 std::vector<std::string> tokenize_moves(const std::string& text) {
-    constexpr std::size_t kMinMoveReserve = 4;
-    constexpr std::size_t kMinTokenReserve = 4;
+    constexpr std::size_t kMinMoveReserve = 4;  // Small PGNs still need a tiny buffer to avoid frequent growth.
+    constexpr std::size_t kMinTokenReserve = 4; // SAN tokens are short; keep a floor for tiny inputs.
     std::vector<std::string> moves;
     // Reserve roughly half the characters for move tokens, but keep a small floor to avoid zero-capacity reserve.
     moves.reserve(std::max<std::size_t>(kMinMoveReserve, text.size() / 2));
