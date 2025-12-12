@@ -21,7 +21,7 @@ std::string escape_json(std::string_view s) {
         case '\r': out += "\\r"; break;
         case '\t': out += "\\t"; break;
         default:
-            if (c < 0x20) {
+            if (c < 0x20 || (c >= 0x7f && c <= 0x9f)) {
                 out += std::format("\\u{:04x}", static_cast<int>(c));
             } else {
                 out.push_back(static_cast<char>(c));

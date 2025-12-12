@@ -36,9 +36,9 @@ std::pair<std::string, std::string> split_tag(std::string_view tag_line) {
 
 std::vector<std::string> tokenize_moves(const std::string& text) {
     std::vector<std::string> moves;
-    moves.reserve(text.size() / 2); // heuristic: average SAN token is ~2 chars
+    moves.reserve(std::max<std::size_t>(4, text.size() / 2)); // heuristic: average SAN token is ~2 chars
     std::string token;
-    token.reserve(text.size() / 4);
+    token.reserve(std::max<std::size_t>(4, text.size() / 4));
     bool in_comment = false;
     int variation_depth = 0;
 

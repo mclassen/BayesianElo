@@ -45,7 +45,7 @@ void print_help() {
         << "  --csv <path>                Write ratings table as CSV\n"
         << "  --json <path>               Write ratings table as JSON\n"
         << "  --max-games <n>             Stop after N accepted games\n"
-        << "  --max-size <bytes|k|m|g>    Cap approximate memory for names + pairings\n"
+        << "  --max-size <bytes|k|m|g>    Cap approximate total memory for names, pairings, and internal overhead\n"
         << "  --keep-moves                Retain SAN move text (otherwise dropped after ply counting)\n"
         << "\nFilters:\n"
         << "  --min-plies <n>             Minimum plies (half-moves)\n"
@@ -53,7 +53,7 @@ void print_help() {
         << "  --min-moves <n>             Minimum moves (converted to plies)\n"
         << "  --max-moves <n>             Maximum moves (converted to plies)\n"
         << "  --min-time <dur>            Minimum duration; accepts seconds or suffix h/m/s (e.g. 300, 5m, 1h)\n"
-        << "  --max-time <dur>            Maximum duration; \"300+2\" keeps the base time (300)\n"
+        << "  --max-time <dur>            Maximum duration; e.g. \"300+2\" uses only the base time (300); increments are ignored\n"
         << "  --white-name <substr>       Require White name contains substring\n"
         << "  --black-name <substr>       Require Black name contains substring\n"
         << "  --either-name <substr>      Require either name contains substring\n"
@@ -365,11 +365,6 @@ int main(int argc, char** argv) {
                     g.moves.shrink_to_fit();
                 }
                 if (!passes_filters(g, options.filters)) continue;
-
-                if (options.max_games && accepted.load(std::memory_order_acquire) >= *options.max_games) {
-                    max_reached.store(true, std::memory_order_relaxed);
-                    break;
-                }
 
                 if (use_pairings) {
                     if (g.result.outcome == GameResult::Outcome::Unknown) continue;
