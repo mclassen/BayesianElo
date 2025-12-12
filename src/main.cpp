@@ -131,7 +131,8 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    constexpr std::size_t default_chunk_bytes = 1u << 20; // 1 MiB chunks: balances IO and parallel parsing.
+    // 1 MiB chunks: large enough to amortize file I/O overhead, small enough to keep parallelism granular.
+    constexpr std::size_t default_chunk_bytes = 1u << 20;
     std::vector<ChunkRange> chunks;
     chunks.reserve(options.files.size());
     for (const auto& file : options.files) {
@@ -158,7 +159,8 @@ int main(int argc, char** argv) {
             std::vector<Game> local_games;
             std::vector<Pairing> local_pairs;
             if (!parsed) {
-                std::cerr << "Failed to parse chunk: " << chunk.file << "\n";
+                std::cerr << "Failed to parse chunk: " << chunk.file
+                          << " (offsets " << chunk.start_offset << "-" << chunk.end_offset << ")\n";
                 return;
             }
             local_games.reserve(parsed->size());

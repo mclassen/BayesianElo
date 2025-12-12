@@ -14,4 +14,4 @@ struct ChunkRange {
 
 std::vector<ChunkRange> split_pgn_file(const std::filesystem::path& file, std::size_t chunk_bytes);
 
-} // namespace bayeselo;
+} // namespace bayeselo

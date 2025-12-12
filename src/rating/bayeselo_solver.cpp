@@ -86,7 +86,7 @@ RatingResult BayesEloSolver::solve(const std::vector<Pairing>& pairings, const s
         }
     }
 
-    constexpr double k_scale = 400.0; // Standard Elo scale: 400 pts implies 10:1 expected score odds.
+    constexpr double k_scale = 400.0; // Standard Elo scale: 400 pts implies ~10:1 expected score ratio (~0.91 vs 0.09 win prob).
     const double ln10_div4 = std::log(10.0) / k_scale; // ln(10)/400 used in gradient update.
     constexpr int max_iterations = 50; // Fixed iteration cap for convergence.
     constexpr double hessian_reg = 1e-6; // Diagonal regularizer to avoid singular Hessian.
@@ -140,8 +140,7 @@ RatingResult BayesEloSolver::solve(const std::vector<Pairing>& pairings, const s
         for (std::size_t j = 0; j < n; ++j) {
             if (i == j) continue;
             double diff = ratings[i] - ratings[j];
-            // LOS uses half-scale to approximate P(r_i > r_j): halving the Elo denominator
-            // is a common approximation for likelihood-of-superiority probability.
+            // LOS uses half-scale to approximate P(r_i > r_j): a BayesElo convention to make LOS more discriminative.
             double los = 1.0 / (1.0 + std::pow(10.0, -diff / (k_scale / 2.0)));
             result.los_matrix[i][j] = los;
         }

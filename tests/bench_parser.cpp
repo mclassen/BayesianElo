@@ -35,7 +35,7 @@ void write_synthetic_pgn(const std::filesystem::path& path, std::size_t target_b
         {"Alpha", "Beta", "1-0", "Normal", "5m+3", "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 1-0"},
         {"Gamma", "Delta", "0-1", "Time forfeit", "3m+2", "1. d4 Nf6 2. c4 e6 3. Nc3 Bb4 0-1"},
         {"Epsilon", "Zeta", "1/2-1/2", "Abandoned", "60", "1. c4 e5 2. Nc3 Nf6 3. g3 d5 4. cxd5 Nxd5 1/2-1/2"},
-        {"Eta", "Theta", "*", "", "", "1. Nf3 d5 2. g3 {comment} 2... c5 (2...Nf6) 3. Bg2 *"},
+        {"Eta", "Theta", "*", "", "", "1. Nf3 d5 2. g3 {comment} 2... c5 (2...Nf6) 3. Bg2 *"}, // intentionally missing optional tags
     };
 
     std::ofstream out(path, std::ios::binary);
