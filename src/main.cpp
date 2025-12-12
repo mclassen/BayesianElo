@@ -64,8 +64,12 @@ void append_pgn_files_from_dir(const std::filesystem::path& dir, std::vector<std
             std::cerr << "Error while scanning " << dir << ": " << ec.message() << "\n";
             break;
         }
-        if (!it->is_regular_file()) continue;
-        if (!has_pgn_extension(it->path())) continue;
+        if (!it->is_regular_file()) {
+            continue;
+        }
+        if (!has_pgn_extension(it->path())) {
+            continue;
+        }
         target.push_back(it->path());
         ++added;
     }
@@ -84,7 +88,7 @@ void print_help() {
         << "Options:\n"
         << "  -h, --help                  Show this help message and exit\n"
         << "  --version                   Print version information and exit\n"
-        << "  --threads <n>               Number of worker threads (default: hardware concurrency)\n"
+        << "  --threads <n>               Number of worker threads (0=auto, default: hardware concurrency)\n"
         << "  --csv <path>                Write ratings table as CSV\n"
         << "  --json <path>               Write ratings table as JSON\n"
         << "  --pgn-dir <path>            Recursively add all .pgn files under directory\n"
@@ -182,8 +186,8 @@ CliOptions parse_cli(int argc, char** argv) {
                 std::cerr << "Invalid value for --threads\n";
                 std::exit(1);
             }
-            if (threads == 0 || threads > 1024) {
-                std::cerr << "--threads must be in [1,1024]\n";
+            if (threads > 1024) {
+                std::cerr << "--threads must be in [0,1024] (0 means auto-detect)\n";
                 std::exit(1);
             }
             options.threads = threads;
@@ -430,39 +434,79 @@ int main(int argc, char** argv) {
                     g.moves.clear();
                     g.moves.shrink_to_fit();
                 }
-                if (!passes_filters(g, options.filters)) continue;
+                if (!passes_filters(g, options.filters)) {
+                    continue;
+                }
 
                 if (use_pairings) {
-                    if (g.result.outcome == GameResult::Outcome::Unknown) continue;
-                    std::size_t w_idx, b_idx;
+                    if (g.result.outcome == GameResult::Outcome::Unknown) {
+                        continue;
+                    }
+
+                    std::size_t w_idx = 0;
+                    std::size_t b_idx = 0;
+                    bool white_missing = false;
+                    bool black_missing = false;
+                    std::size_t name_bytes_needed = 0;
+
                     {
                         std::scoped_lock lock(games_mutex);
+                        if (options.max_games && accepted.load(std::memory_order_acquire) >= *options.max_games) {
+                            max_reached.store(true, std::memory_order_relaxed);
+                            break;
+                        }
                         auto itw = name_index.find(g.meta.white);
                         if (itw == name_index.end()) {
-                            if (!reserve_bytes(g.meta.white.size() + name_overhead)) {
-                                break;
-                            }
-                            w_idx = player_names.size();
-                            name_index[g.meta.white] = w_idx;
-                            player_names.push_back(g.meta.white);
+                            white_missing = true;
+                            name_bytes_needed += g.meta.white.size() + name_overhead;
                         } else {
                             w_idx = itw->second;
                         }
                         auto itb = name_index.find(g.meta.black);
                         if (itb == name_index.end()) {
-                            if (!reserve_bytes(g.meta.black.size() + name_overhead)) {
-                                break;
-                            }
-                            b_idx = player_names.size();
-                            name_index[g.meta.black] = b_idx;
-                            player_names.push_back(g.meta.black);
+                            black_missing = true;
+                            name_bytes_needed += g.meta.black.size() + name_overhead;
                         } else {
                             b_idx = itb->second;
                         }
                     }
+
+                    if (name_bytes_needed > 0) {
+                        if (!reserve_bytes(name_bytes_needed)) {
+                            break;
+                        }
+                    }
+
+                    {
+                        std::scoped_lock lock(games_mutex);
+                        if (white_missing) {
+                            auto itw = name_index.find(g.meta.white);
+                            if (itw == name_index.end()) {
+                                w_idx = player_names.size();
+                                name_index[g.meta.white] = w_idx;
+                                player_names.push_back(g.meta.white);
+                            } else {
+                                w_idx = itw->second;
+                            }
+                        }
+                        if (black_missing) {
+                            auto itb = name_index.find(g.meta.black);
+                            if (itb == name_index.end()) {
+                                b_idx = player_names.size();
+                                name_index[g.meta.black] = b_idx;
+                                player_names.push_back(g.meta.black);
+                            } else {
+                                b_idx = itb->second;
+                            }
+                        }
+                    }
+
                     double score = 0.5;
-                    if (g.result.outcome == GameResult::Outcome::WhiteWin) score = 1.0;
-                    else if (g.result.outcome == GameResult::Outcome::BlackWin) score = 0.0;
+                    if (g.result.outcome == GameResult::Outcome::WhiteWin) {
+                        score = 1.0;
+                    } else if (g.result.outcome == GameResult::Outcome::BlackWin) {
+                        score = 0.0;
+                    }
                     if (!reserve_bytes(pairing_bytes)) {
                         break;
                     }
