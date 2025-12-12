@@ -232,6 +232,8 @@ bool passes_filters(const Game& game, const FilterConfig& config) {
     }
 
     if (config.min_time_seconds || config.max_time_seconds) {
+        // Defensive: some Game instances may be constructed outside parse_pgn_chunk (tests/other paths),
+        // so estimated_duration_seconds may be unset even when TimeControl exists.
         std::optional<double> duration = game.estimated_duration_seconds;
         if (!duration && game.meta.time_control) {
             try {

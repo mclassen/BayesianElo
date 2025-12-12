@@ -24,10 +24,16 @@ bool colors_enabled() {
 }
 
 std::string colorize(double rating, std::size_t rank) {
-    if (!colors_enabled()) return {};
-    if (rank == 0) return "\033[1;32m"; // top
-    if (rating < 0) return "\033[1;33m";
-    return "\033[0m";
+    if (!colors_enabled()) {
+        return {};
+    }
+    if (rank == 0) {
+        return "\033[1;32m"; // top
+    }
+    if (rating < 0) {
+        return "\033[1;33m";
+    }
+    return {};
 }
 }
 

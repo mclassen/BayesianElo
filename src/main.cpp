@@ -93,7 +93,7 @@ void print_help() {
         << "  --json <path>               Write ratings table as JSON\n"
         << "  --pgn-dir <path>            Recursively add all .pgn files under directory\n"
         << "  --max-games <n>             Stop after N accepted games\n"
-        << "  --max-size <bytes|k|m|g>    Cap approximate total memory for names, pairings, and internal overhead\n"
+        << "  --max-size <bytes|k|m|g>    Cap approximate total memory for names, pairings, and internal overhead (k=KiB, m=MiB, g=GiB)\n"
         << "  --keep-moves                Retain SAN move text (otherwise dropped after ply counting)\n"
         << "\nFilters:\n"
         << "  --min-plies <n>             Minimum plies (half-moves)\n"
@@ -119,8 +119,9 @@ void print_help() {
 
 CliOptions parse_cli(int argc, char** argv) {
     CliOptions options;
+    constexpr std::size_t kMaxThreadMultiplier = 8; // Allow oversubscription for IO-bound workloads.
     const std::size_t max_threads = std::max<std::size_t>(
-        1024, static_cast<std::size_t>(std::max(1u, std::thread::hardware_concurrency())) * 8);
+        1024, static_cast<std::size_t>(std::max(1u, std::thread::hardware_concurrency())) * kMaxThreadMultiplier);
     auto require_value = [&](const std::string& opt, int i) {
         if (i + 1 >= argc) {
             std::cerr << opt << " requires a value\n";
@@ -380,7 +381,7 @@ int main(int argc, char** argv) {
     std::unordered_map<std::string, std::size_t> name_index;
     std::atomic_size_t estimated_bytes{0};
     const bool use_pairings = !options.keep_moves;
-    constexpr std::size_t pairing_bytes = sizeof(Pairing); // Heuristic; we intentionally avoid extra margins to keep limits intuitive (see PR discussion).
+    constexpr std::size_t kPairingBytes = sizeof(Pairing); // Heuristic; we intentionally avoid extra margins to keep limits intuitive (see PR discussion).
     constexpr std::size_t kNameOverhead = sizeof(std::string); // Same here: this tracks control blocks only so --max-size is a soft cap by design.
     auto try_add_bounded = [&](std::atomic_size_t& counter, std::size_t max_value, std::size_t delta) -> bool {
         if (delta > max_value) {
@@ -500,7 +501,7 @@ int main(int argc, char** argv) {
                     } else if (g.result.outcome == GameResult::Outcome::BlackWin) {
                         score = 0.0;
                     }
-                    if (!reserve_bytes(pairing_bytes)) {
+                    if (!reserve_bytes(kPairingBytes)) {
                         break;
                     }
                     if (!try_accept_game()) {

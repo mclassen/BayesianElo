@@ -48,9 +48,6 @@ std::vector<ChunkRange> split_pgn_file(const std::filesystem::path& file, std::s
                 found_event = true;
                 break;
             }
-            if (in.eof() || in.fail()) {
-                break;
-            }
             last_pos = static_cast<std::size_t>(pos);
             line_start = pos;
         }
