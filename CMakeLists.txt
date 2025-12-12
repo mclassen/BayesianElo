@@ -56,8 +56,8 @@ add_test(NAME size_parse_tests COMMAND size_parse_tests)
 add_executable(bench_parser tests/bench_parser.cpp)
 target_link_libraries(bench_parser PRIVATE bayeselo_lib)
 add_test(NAME bench_parser COMMAND bench_parser)
-set_tests_properties(bench_parser PROPERTIES DISABLED TRUE)
-set_target_properties(bench_parser PROPERTIES EXCLUDE_FROM_ALL TRUE)
+set_tests_properties(bench_parser PROPERTIES DISABLED TRUE) # Benchmark: disabled in CI
+set_target_properties(bench_parser PROPERTIES EXCLUDE_FROM_ALL TRUE) # Build via --target bench_parser when needed
 
 add_executable(memory_limit_tests tests/memory_limit_tests.cpp)
 target_link_libraries(memory_limit_tests PRIVATE bayeselo_lib)

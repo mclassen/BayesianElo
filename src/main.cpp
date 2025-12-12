@@ -65,7 +65,8 @@ void print_help() {
         << "\nNotes:\n"
         << "  - Provide one or more PGN files to rate. Games are filtered before rating.\n"
         << "  - Size suffixes: k=KiB, m=MiB, g=GiB. Duration suffixes: s, m, h.\n"
-        << "  - When --keep-moves is omitted, moves are discarded after ply counting and only compact pairings/results are retained, reducing memory.\n";
+        << "  - When --keep-moves is omitted, moves are discarded after ply counting and only compact pairings/results are retained, reducing memory.\n"
+        << "  - Use --keep-moves if you plan to export move text or perform move-level analysis later.\n";
 }
 
 CliOptions parse_cli(int argc, char** argv) {
@@ -133,7 +134,11 @@ CliOptions parse_cli(int argc, char** argv) {
         }
         if (arg == "--threads") {
             std::size_t threads = 0;
-            if (!parse_size_t_arg(arg, i, threads) || threads == 0 || threads > 1024) {
+            if (!parse_size_t_arg(arg, i, threads)) {
+                std::cerr << "Invalid value for --threads: expected integer in [1,1024]\n";
+                std::exit(1);
+            }
+            if (threads == 0 || threads > 1024) {
                 std::cerr << "--threads must be in [1,1024]\n";
                 std::exit(1);
             }

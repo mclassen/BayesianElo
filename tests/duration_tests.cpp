@@ -18,6 +18,12 @@ int main() {
     if (!check("1h", 3600.0)) return 1;
     if (!check("300+2", 300.0)) return 1;
     if (!check("5m+3", 300.0)) return 1;
+    try {
+        parse_duration_to_seconds("abc");
+        std::cerr << "duration test failed: \"abc\" should throw\n";
+        return 1;
+    } catch (const std::exception&) {
+    }
     std::cout << "duration tests passed\n";
     return 0;
 }

@@ -30,7 +30,7 @@ std::vector<ChunkRange> split_pgn_file(const std::filesystem::path& file, std::s
         // Move to next [Event boundary
         while (std::getline(in, line)) {
             pos = in.tellg();
-            if (pos == prev_pos) {
+            if (pos == prev_pos || in.eof() || in.fail()) {
                 break; // no forward progress; bail out to avoid infinite loop
             }
             prev_pos = pos;
