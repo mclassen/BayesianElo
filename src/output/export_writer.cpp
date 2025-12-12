@@ -22,7 +22,10 @@ std::string escape_json(std::string_view s) {
         case '\r': out += "\\r"; break;
         case '\t': out += "\\t"; break;
         default:
-            if (c < 0x20 || (c >= 0x7f && c <= 0x9f)) {
+            // Treat input as UTF-8 and only escape ASCII control bytes. Escaping 0x80-0x9F would
+            // corrupt UTF-8 multibyte sequences (continuation bytes), so we intentionally pass
+            // through all bytes >= 0x80 unchanged.
+            if (c < 0x20 || c == 0x7f) {
                 out += std::format("\\u{:04x}", static_cast<int>(c));
             } else {
                 out.push_back(static_cast<char>(c));

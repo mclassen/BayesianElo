@@ -13,11 +13,21 @@ int main() {
         }
         return true;
     };
-    if (!check("60", 60.0)) return 1;
-    if (!check("2m", 120.0)) return 1;
-    if (!check("1h", 3600.0)) return 1;
-    if (!check("300+2", 300.0)) return 1;
-    if (!check("5m+3", 300.0)) return 1;
+    if (!check("60", 60.0)) {
+        return 1;
+    }
+    if (!check("2m", 120.0)) {
+        return 1;
+    }
+    if (!check("1h", 3600.0)) {
+        return 1;
+    }
+    if (!check("300+2", 300.0)) {
+        return 1;
+    }
+    if (!check("5m+3", 300.0)) {
+        return 1;
+    }
     try {
         parse_duration_to_seconds("abc");
         std::cerr << "duration test failed: \"abc\" should throw\n";
@@ -30,7 +40,12 @@ int main() {
         return 1;
     } catch (const std::exception&) {
     }
-    if (!check("", 0.0)) return 1; // empty input treated as zero per parser contract
+    try {
+        parse_duration_to_seconds("");
+        std::cerr << "duration test failed: \"\" should throw\n";
+        return 1;
+    } catch (const std::exception&) {
+    }
     try {
         parse_duration_to_seconds("-5m");
         std::cerr << "duration test failed: \"-5m\" should throw\n";
