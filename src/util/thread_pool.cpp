@@ -44,7 +44,7 @@ void ThreadPool::wait_for_completion() {
 
 void ThreadPool::worker(std::stop_token token) {
     // stopping_ controls logical pool shutdown and enqueue suppression; stop_token
-    // enables cancellation of cv_.wait when jthreads are destroyed.
+    // enables cancellation of the cv_.wait call when jthreads are destroyed.
     while (!token.stop_requested()) {
         std::function<void()> task;
         {

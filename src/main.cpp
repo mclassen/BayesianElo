@@ -305,7 +305,7 @@ int main(int argc, char** argv) {
     std::unordered_map<std::string, std::size_t> name_index;
     std::atomic_size_t estimated_bytes{0};
     const bool use_pairings = !options.keep_moves;
-    constexpr std::size_t pairing_bytes = sizeof(Pairing); // Approximate per-pairing footprint (object only, no allocator overhead).
+    constexpr std::size_t pairing_bytes = sizeof(Pairing); // Approximate per-pairing footprint (object only, excludes allocator overhead).
     constexpr std::size_t name_overhead = sizeof(std::string); // Rough estimate to track std::string control blocks; actual usage is higher.
     auto reserve_bytes = [&](std::size_t bytes) -> bool {
         if (!options.max_bytes) {
