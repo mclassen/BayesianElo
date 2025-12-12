@@ -1,6 +1,7 @@
 #include "parser/pgn_parser.h"
 #include "parser/chunk_splitter.h"
 
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>

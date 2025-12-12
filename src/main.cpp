@@ -14,6 +14,7 @@
 #include <atomic>
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <vector>
@@ -68,57 +69,210 @@ void print_help() {
 
 CliOptions parse_cli(int argc, char** argv) {
     CliOptions options;
+    auto require_value = [&](const std::string& opt, int i) {
+        if (i + 1 >= argc) {
+            std::cerr << opt << " requires a value\n";
+            return false;
+        }
+        return true;
+    };
+    auto parse_size_t_arg = [&](const std::string& opt, int& i, std::size_t& out) {
+        if (!require_value(opt, i)) {
+            return false;
+        }
+        const char* val = argv[++i];
+        try {
+            out = static_cast<std::size_t>(std::stoull(val));
+        } catch (const std::exception&) {
+            std::cerr << "Invalid value for " << opt << ": " << val << "\n";
+            return false;
+        }
+        return true;
+    };
+    auto parse_uint32_arg = [&](const std::string& opt, int& i, std::uint32_t& out) {
+        if (!require_value(opt, i)) {
+            return false;
+        }
+        const char* val = argv[++i];
+        try {
+            unsigned long v = std::stoul(val);
+            if (v > std::numeric_limits<std::uint32_t>::max()) {
+                throw std::out_of_range("too large");
+            }
+            out = static_cast<std::uint32_t>(v);
+        } catch (const std::exception&) {
+            std::cerr << "Invalid value for " << opt << ": " << val << "\n";
+            return false;
+        }
+        return true;
+    };
+    auto parse_duration_arg = [&](const std::string& opt, int& i, std::optional<double>& out) {
+        if (!require_value(opt, i)) {
+            return false;
+        }
+        const char* val = argv[++i];
+        try {
+            out = parse_duration_to_seconds(val);
+        } catch (const std::exception& ex) {
+            std::cerr << "Invalid value for " << opt << ": " << val << " (" << ex.what() << ")\n";
+            return false;
+        }
+        return true;
+    };
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--help" || arg == "-h") {
             print_help();
             std::exit(0);
-        } else if (arg == "--version") {
+        }
+        if (arg == "--version") {
             std::cout << "Bayesian Elo PGN CLI " << BAYESELO_VERSION_STRING
                       << " (" << BAYESELO_GIT_HASH << ")\n";
             std::exit(0);
-        } else if (arg == "--threads" && i + 1 < argc) {
-            options.threads = static_cast<std::size_t>(std::stoul(argv[++i]));
-        } else if (arg == "--min-plies" && i + 1 < argc) {
-            options.filters.min_plies = static_cast<std::uint32_t>(std::stoul(argv[++i]));
-        } else if (arg == "--max-plies" && i + 1 < argc) {
-            options.filters.max_plies = static_cast<std::uint32_t>(std::stoul(argv[++i]));
-        } else if (arg == "--min-moves" && i + 1 < argc) {
-            options.filters.min_plies = static_cast<std::uint32_t>(std::stoul(argv[++i]) * 2);
-        } else if (arg == "--max-moves" && i + 1 < argc) {
-            options.filters.max_plies = static_cast<std::uint32_t>(std::stoul(argv[++i]) * 2);
-        } else if (arg == "--min-time" && i + 1 < argc) {
-            options.filters.min_time_seconds = parse_duration_to_seconds(argv[++i]);
-        } else if (arg == "--max-time" && i + 1 < argc) {
-            options.filters.max_time_seconds = parse_duration_to_seconds(argv[++i]);
-        } else if (arg == "--white-name" && i + 1 < argc) {
+        }
+        if (arg == "--threads") {
+            std::size_t threads = 0;
+            if (!parse_size_t_arg(arg, i, threads) || threads == 0 || threads > 1024) {
+                std::cerr << "--threads must be in [1,1024]\n";
+                std::exit(1);
+            }
+            options.threads = threads;
+            continue;
+        }
+        if (arg == "--min-plies") {
+            std::uint32_t v = 0;
+            if (!parse_uint32_arg(arg, i, v)) {
+                std::exit(1);
+            }
+            options.filters.min_plies = v;
+            continue;
+        }
+        if (arg == "--max-plies") {
+            std::uint32_t v = 0;
+            if (!parse_uint32_arg(arg, i, v)) {
+                std::exit(1);
+            }
+            options.filters.max_plies = v;
+            continue;
+        }
+        if (arg == "--min-moves") {
+            std::uint32_t v = 0;
+            if (!parse_uint32_arg(arg, i, v)) {
+                std::exit(1);
+            }
+            options.filters.min_plies = v * 2;
+            continue;
+        }
+        if (arg == "--max-moves") {
+            std::uint32_t v = 0;
+            if (!parse_uint32_arg(arg, i, v)) {
+                std::exit(1);
+            }
+            options.filters.max_plies = v * 2;
+            continue;
+        }
+        if (arg == "--min-time") {
+            if (!parse_duration_arg(arg, i, options.filters.min_time_seconds)) {
+                std::exit(1);
+            }
+            continue;
+        }
+        if (arg == "--max-time") {
+            if (!parse_duration_arg(arg, i, options.filters.max_time_seconds)) {
+                std::exit(1);
+            }
+            continue;
+        }
+        if (arg == "--white-name") {
+            if (!require_value(arg, i)) {
+                std::exit(1);
+            }
             options.filters.white_name = argv[++i];
-        } else if (arg == "--black-name" && i + 1 < argc) {
+            continue;
+        }
+        if (arg == "--black-name") {
+            if (!require_value(arg, i)) {
+                std::exit(1);
+            }
             options.filters.black_name = argv[++i];
-        } else if (arg == "--either-name" && i + 1 < argc) {
+            continue;
+        }
+        if (arg == "--either-name") {
+            if (!require_value(arg, i)) {
+                std::exit(1);
+            }
             options.filters.either_name = argv[++i];
-        } else if (arg == "--exclude-name" && i + 1 < argc) {
+            continue;
+        }
+        if (arg == "--exclude-name") {
+            if (!require_value(arg, i)) {
+                std::exit(1);
+            }
             options.filters.exclude_name = argv[++i];
-        } else if (arg == "--result" && i + 1 < argc) {
+            continue;
+        }
+        if (arg == "--result") {
+            if (!require_value(arg, i)) {
+                std::exit(1);
+            }
             options.filters.result_filter = argv[++i];
-        } else if (arg == "--termination" && i + 1 < argc) {
+            continue;
+        }
+        if (arg == "--termination") {
+            if (!require_value(arg, i)) {
+                std::exit(1);
+            }
             options.filters.termination = argv[++i];
-        } else if (arg == "--require-complete") {
+            continue;
+        }
+        if (arg == "--require-complete") {
             options.filters.require_complete = true;
-        } else if (arg == "--skip-empty") {
+            continue;
+        }
+        if (arg == "--skip-empty") {
             options.filters.skip_empty = true;
-        } else if (arg == "--csv" && i + 1 < argc) {
+            continue;
+        }
+        if (arg == "--csv") {
+            if (!require_value(arg, i)) {
+                std::exit(1);
+            }
             options.csv = argv[++i];
-        } else if (arg == "--json" && i + 1 < argc) {
+            continue;
+        }
+        if (arg == "--json") {
+            if (!require_value(arg, i)) {
+                std::exit(1);
+            }
             options.json = argv[++i];
-        } else if (arg == "--max-games" && i + 1 < argc) {
-            options.max_games = static_cast<std::size_t>(std::stoull(argv[++i]));
-        } else if (arg == "--keep-moves") {
+            continue;
+        }
+        if (arg == "--max-games") {
+            std::size_t v = 0;
+            if (!parse_size_t_arg(arg, i, v)) {
+                std::exit(1);
+            }
+            options.max_games = v;
+            continue;
+        }
+        if (arg == "--keep-moves") {
             options.keep_moves = true;
-        } else if (arg == "--max-size" && i + 1 < argc) {
+            continue;
+        }
+        if (arg == "--max-size") {
+            if (!require_value(arg, i)) {
+                std::exit(1);
+            }
             options.max_bytes = parse_size(argv[++i]);
-        } else if (!arg.empty() && arg.front() != '-') {
+            if (!options.max_bytes) {
+                std::cerr << "Invalid value for --max-size: " << argv[i] << "\n";
+                std::exit(1);
+            }
+            continue;
+        }
+        if (!arg.empty() && arg.front() != '-') {
             options.files.push_back(arg);
+            continue;
         }
     }
     return options;

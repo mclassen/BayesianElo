@@ -85,7 +85,14 @@ int main(int argc, char** argv) {
     target_bytes = env_size_bytes("BENCH_PGN_MB", target_bytes);
     chunk_bytes = env_size_bytes("BENCH_CHUNK_BYTES", chunk_bytes);
 
-    auto tmp = std::filesystem::temp_directory_path() / "bench_parser.pgn";
+    std::filesystem::path tmp_dir;
+    try {
+        tmp_dir = std::filesystem::temp_directory_path();
+    } catch (const std::exception& ex) {
+        std::cerr << "Failed to get temp directory: " << ex.what() << "\n";
+        return 1;
+    }
+    auto tmp = tmp_dir / "bench_parser.pgn";
     write_synthetic_pgn(tmp, target_bytes);
 
     const auto start = std::chrono::steady_clock::now();

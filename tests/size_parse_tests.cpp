@@ -24,6 +24,10 @@ int main() {
     const auto max_sz = std::numeric_limits<std::size_t>::max();
     auto overflow = parse_size(std::to_string(max_sz) + "k");
     if (overflow) return fail("expected overflow rejected");
+    auto boundary_ok = parse_size(std::to_string(max_sz / 1024) + "k");
+    if (!boundary_ok || *boundary_ok != (max_sz / 1024) * 1024) return fail("expected boundary k parse to succeed");
+    auto just_below_overflow = parse_size(std::to_string((max_sz / 1024) - 1) + "k");
+    if (!just_below_overflow) return fail("expected near-boundary k parse to succeed");
 
     std::cout << "size parse tests passed\n";
     return 0;
