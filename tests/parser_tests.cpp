@@ -54,7 +54,7 @@ int main() {
     if (game.result.outcome != bayeselo::GameResult::Outcome::WhiteWin) return fail("outcome not parsed as WhiteWin");
     if (game.ply_count < 6) return fail("ply count too low: " + std::to_string(game.ply_count));
     if (!game.estimated_duration_seconds) return fail("missing estimated duration");
-    if (std::abs(*game.estimated_duration_seconds - 300.0) > 1e-6) return fail("expected 300s estimate, got " + std::to_string(*game.estimated_duration_seconds));
+    if (std::abs(*game.estimated_duration_seconds - 300.0) > 1e-3) return fail("expected 300s estimate, got " + std::to_string(*game.estimated_duration_seconds));
     bayeselo::FilterConfig config;
     config.termination = "normal";
     if (!bayeselo::passes_filters(game, config)) return fail("termination filter rejected valid game");

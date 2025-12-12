@@ -93,7 +93,7 @@ void print_help() {
         << "  --json <path>               Write ratings table as JSON\n"
         << "  --pgn-dir <path>            Recursively add all .pgn files under directory\n"
         << "  --max-games <n>             Stop after N accepted games\n"
-        << "  --max-size <bytes|k|m|g>    Cap approximate total memory for names, pairings, and internal overhead (k=KiB, m=MiB, g=GiB)\n"
+        << "  --max-size <bytes|k|m|g>    Soft cap on internal memory estimate (k=KiB, m=MiB, g=GiB)\n"
         << "  --keep-moves                Retain SAN move text (otherwise dropped after ply counting)\n"
         << "\nFilters:\n"
         << "  --min-plies <n>             Minimum plies (half-moves)\n"

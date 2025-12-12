@@ -39,7 +39,17 @@ void write_synthetic_pgn(const std::filesystem::path& path, std::size_t target_b
 
     std::ofstream out(path, std::ios::binary);
     std::size_t idx = 0;
-    while (out.tellp() < static_cast<std::streamoff>(target_bytes)) {
+    while (true) {
+        if (!out) {
+            break;
+        }
+        const std::streampos pos = out.tellp();
+        if (pos == std::streampos(-1)) {
+            break;
+        }
+        if (static_cast<std::size_t>(pos) >= target_bytes) {
+            break;
+        }
         const auto& g = variants[idx % variants.size()];
         out << "[Event \"Bench " << idx << "\"]\n"
             << "[Site \"Local\"]\n"
