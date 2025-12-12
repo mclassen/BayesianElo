@@ -73,7 +73,7 @@ void write_json(const RatingResult& result, const std::filesystem::path& path) {
         if (i + 1 != result.los_matrix.size()) out << ",";
         out << "\n";
     }
-    out << "  ]\n}";
+    out << "  ]\n}\n";
 }
 
 } // namespace bayeselo
