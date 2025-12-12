@@ -41,7 +41,7 @@ void print_ratings(const RatingResult& result) {
     for (std::size_t i = 0; i < result.players.size(); ++i) {
         const auto& p = result.players[i];
         double score_pct = p.games_played ? (p.score_sum / p.games_played) * 100.0 : 0.0;
-        double draw_pct = p.games_played ? (p.draws / p.games_played) * 100.0 : 0.0;
+        double draw_pct = p.games_played ? (static_cast<double>(p.draws) / p.games_played) * 100.0 : 0.0;
         auto color = colorize(p.rating, i);
         std::cout << color
                   << std::right << std::setw(4) << (i + 1) << " | "

@@ -40,7 +40,7 @@ void write_csv(const RatingResult& result, const std::filesystem::path& path) {
     out << "Player,Elo,Error,Games,ScorePct,DrawPct\n";
     for (const auto& p : result.players) {
         double score_pct = p.games_played ? (p.score_sum / p.games_played) * 100.0 : 0.0;
-        double draw_pct = p.games_played ? (p.draws / p.games_played) * 100.0 : 0.0;
+        double draw_pct = p.games_played ? (static_cast<double>(p.draws) / p.games_played) * 100.0 : 0.0;
         out << std::format("{},{:.2f},{:.2f},{},{:.2f},{:.2f}\n", p.name, p.rating, p.error, p.games_played, score_pct, draw_pct);
     }
 }
@@ -54,7 +54,7 @@ void write_json(const RatingResult& result, const std::filesystem::path& path) {
     for (std::size_t i = 0; i < result.players.size(); ++i) {
         const auto& p = result.players[i];
         double score_pct = p.games_played ? (p.score_sum / p.games_played) * 100.0 : 0.0;
-        double draw_pct = p.games_played ? (p.draws / p.games_played) * 100.0 : 0.0;
+        double draw_pct = p.games_played ? (static_cast<double>(p.draws) / p.games_played) * 100.0 : 0.0;
         out << std::format("    {{\"name\": \"{}\", \"elo\": {:.2f}, \"error\": {:.2f}, \"games\": {}, \"score_pct\": {:.2f}, \"draw_pct\": {:.2f}}}",
                           escape_json(p.name), p.rating, p.error, p.games_played, score_pct, draw_pct);
         if (i + 1 != result.players.size()) out << ",";

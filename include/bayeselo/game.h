@@ -41,8 +41,7 @@ struct PlayerStats {
     std::uint32_t games_played{0};
     double score_sum{0.0};
     double opponent_rating_sum{0.0};
-    double draws{0.0};
+    std::uint32_t draws{0};
 };
 
 } // namespace bayeselo
-

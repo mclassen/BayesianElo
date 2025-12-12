@@ -15,7 +15,7 @@ namespace bayeselo {
 
 namespace {
 std::optional<std::string> parse_tag_line(std::string_view line) {
-    if (line.empty() || line.front() != '[' || line.back() != ']') {
+    if (line.size() < 2 || line.front() != '[' || line.back() != ']') {
         return std::nullopt;
     }
     return std::string(line.substr(1, line.size() - 2));

@@ -1,12 +1,13 @@
 #include "bayeselo/duration.h"
 
+#include <cmath>
 #include <iostream>
 
 int main() {
     using bayeselo::parse_duration_to_seconds;
-    auto check = [&](const char* text, double expected) -> bool {
+    auto check = [](const char* text, double expected) -> bool {
         double got = parse_duration_to_seconds(text);
-        if (got != expected) {
+        if (std::abs(got - expected) > 1e-9) {
             std::cerr << "duration test failed: \"" << text << "\" expected " << expected << " got " << got << "\n";
             return false;
         }

@@ -17,6 +17,7 @@
 #include <limits>
 #include <mutex>
 #include <optional>
+#include <thread>
 #include <vector>
 
 using namespace bayeselo;
@@ -306,6 +307,28 @@ int main(int argc, char** argv) {
     const bool use_pairings = !options.keep_moves;
     constexpr std::size_t pairing_bytes = sizeof(Pairing);
     constexpr std::size_t name_overhead = sizeof(std::string);
+    auto reserve_bytes = [&](std::size_t bytes) -> bool {
+        if (!options.max_bytes) {
+            return true;
+        }
+        int attempts = 0;
+        while (true) {
+            auto current = estimated_bytes.load(std::memory_order_acquire);
+            auto next = current + bytes;
+            if (next > *options.max_bytes) {
+                max_reached.store(true, std::memory_order_relaxed);
+                return false;
+            }
+            if (estimated_bytes.compare_exchange_weak(current, next,
+                                                      std::memory_order_acq_rel,
+                                                      std::memory_order_acquire)) {
+                return true;
+            }
+            if (++attempts % 8 == 0) {
+                std::this_thread::yield();
+            }
+        }
+    };
 
     for (const auto& chunk : chunks) {
         pool.enqueue([&, chunk]() {
@@ -353,21 +376,29 @@ int main(int argc, char** argv) {
                     std::size_t w_idx, b_idx;
                     {
                         std::scoped_lock lock(games_mutex);
+                        if (options.max_games && accepted.load(std::memory_order_acquire) >= *options.max_games) {
+                            max_reached.store(true, std::memory_order_relaxed);
+                            break;
+                        }
                         auto itw = name_index.find(g.meta.white);
                         if (itw == name_index.end()) {
+                            if (!reserve_bytes(g.meta.white.size() + name_overhead)) {
+                                break;
+                            }
                             w_idx = player_names.size();
                             name_index[g.meta.white] = w_idx;
                             player_names.push_back(g.meta.white);
-                            estimated_bytes.fetch_add(g.meta.white.size() + name_overhead, std::memory_order_relaxed);
                         } else {
                             w_idx = itw->second;
                         }
                         auto itb = name_index.find(g.meta.black);
                         if (itb == name_index.end()) {
+                            if (!reserve_bytes(g.meta.black.size() + name_overhead)) {
+                                break;
+                            }
                             b_idx = player_names.size();
                             name_index[g.meta.black] = b_idx;
                             player_names.push_back(g.meta.black);
-                            estimated_bytes.fetch_add(g.meta.black.size() + name_overhead, std::memory_order_relaxed);
                         } else {
                             b_idx = itb->second;
                         }
@@ -375,26 +406,9 @@ int main(int argc, char** argv) {
                     double score = 0.5;
                     if (g.result.outcome == GameResult::Outcome::WhiteWin) score = 1.0;
                     else if (g.result.outcome == GameResult::Outcome::BlackWin) score = 0.0;
-
-                if (options.max_bytes) {
-                    bool limit_hit = false;
-                    for (;;) {
-                        auto current = estimated_bytes.load(std::memory_order_acquire);
-                        auto next = current + pairing_bytes;
-                        if (next > *options.max_bytes) {
-                            max_reached.store(true, std::memory_order_relaxed);
-                            limit_hit = true;
-                            break;
-                        }
-                        if (estimated_bytes.compare_exchange_weak(current, next,
-                                                                  std::memory_order_acq_rel,
-                                                                  std::memory_order_acquire)) {
-                            break;
-                        }
+                    if (!reserve_bytes(pairing_bytes)) {
+                        break;
                     }
-                    if (limit_hit) break;
-                }
-
                     if (!try_accept_game()) {
                         max_reached.store(true, std::memory_order_relaxed);
                         break;
