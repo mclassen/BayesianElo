@@ -1,11 +1,10 @@
 #include "export_writer.h"
 
-#include <cerrno>
-#include <cstring>
 #include <format>
 #include <fstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 namespace bayeselo {
 
@@ -32,6 +31,25 @@ std::string escape_json(std::string_view s) {
     }
     return out;
 }
+
+std::string escape_csv(std::string_view s) {
+    const bool needs_quotes = (s.find_first_of(",\"\n\r") != std::string_view::npos);
+    if (!needs_quotes) {
+        return std::string(s);
+    }
+    std::string out;
+    out.reserve(s.size() + 2);
+    out.push_back('"');
+    for (char ch : s) {
+        if (ch == '"') {
+            out += "\"\"";
+        } else {
+            out.push_back(ch);
+        }
+    }
+    out.push_back('"');
+    return out;
+}
 }
 
 void write_csv(const RatingResult& result, const std::filesystem::path& path) {
@@ -43,7 +61,8 @@ void write_csv(const RatingResult& result, const std::filesystem::path& path) {
     for (const auto& p : result.players) {
         double score_pct = p.games_played ? (p.score_sum / p.games_played) * 100.0 : 0.0;
         double draw_pct = p.games_played ? (static_cast<double>(p.draws) / p.games_played) * 100.0 : 0.0;
-        out << std::format("{},{:.2f},{:.2f},{},{:.2f},{:.2f}\n", p.name, p.rating, p.error, p.games_played, score_pct, draw_pct);
+        out << std::format("{},{:.2f},{:.2f},{},{:.2f},{:.2f}\n",
+                           escape_csv(p.name), p.rating, p.error, p.games_played, score_pct, draw_pct);
     }
     out.flush();
     if (!out) {
@@ -63,7 +82,9 @@ void write_json(const RatingResult& result, const std::filesystem::path& path) {
         double draw_pct = p.games_played ? (static_cast<double>(p.draws) / p.games_played) * 100.0 : 0.0;
         out << std::format("    {{\"name\": \"{}\", \"elo\": {:.2f}, \"error\": {:.2f}, \"games\": {}, \"score_pct\": {:.2f}, \"draw_pct\": {:.2f}}}",
                           escape_json(p.name), p.rating, p.error, p.games_played, score_pct, draw_pct);
-        if (i + 1 != result.players.size()) out << ",";
+        if (i + 1 != result.players.size()) {
+            out << ",";
+        }
         out << "\n";
     }
     out << "  ],\n  \"los\": [\n";
@@ -71,13 +92,18 @@ void write_json(const RatingResult& result, const std::filesystem::path& path) {
         out << "    [";
         for (std::size_t j = 0; j < result.los_matrix[i].size(); ++j) {
             out << std::format("{:.4f}", result.los_matrix[i][j]);
-            if (j + 1 != result.los_matrix[i].size()) out << ", ";
+            if (j + 1 != result.los_matrix[i].size()) {
+                out << ", ";
+            }
         }
         out << "]";
-        if (i + 1 != result.los_matrix.size()) out << ",";
+        if (i + 1 != result.los_matrix.size()) {
+            out << ",";
+        }
         out << "\n";
     }
     out << "  ]\n}\n";
+    out.flush();
     if (!out) {
         throw std::runtime_error("Failed to write JSON output: " + path.string());
     }

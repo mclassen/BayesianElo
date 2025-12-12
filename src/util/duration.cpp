@@ -10,7 +10,7 @@ namespace bayeselo {
 
 double parse_duration_to_seconds(std::string_view value) {
     if (value.empty()) {
-        return 0.0;
+        throw std::invalid_argument("Invalid duration: (empty)");
     }
     std::string numeric;
     char suffix = 's';

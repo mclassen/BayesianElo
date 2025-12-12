@@ -549,7 +549,11 @@ int main(int argc, char** argv) {
     if (max_reached.load(std::memory_order_relaxed)) {
         std::cerr << "Reached limit (--max-games or --max-size); remaining parsed games were discarded.\n";
     }
-    if (options.csv) write_csv(ratings, *options.csv);
-    if (options.json) write_json(ratings, *options.json);
+    if (options.csv) {
+        write_csv(ratings, *options.csv);
+    }
+    if (options.json) {
+        write_json(ratings, *options.json);
+    }
     return 0;
 }
