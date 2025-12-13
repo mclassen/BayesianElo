@@ -1,5 +1,6 @@
 #include "terminal_output.h"
 
+#include <cmath>
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
@@ -52,6 +53,20 @@ std::string colorize(double rating, std::size_t rank) {
         return "\033[1;33m";
     }
     return {};
+}
+
+double normal_cdf(double z) {
+    // Φ(z) = 0.5 * erfc(-z / sqrt(2))
+    constexpr double inv_sqrt2 = 0.70710678118654752440;
+    return 0.5 * std::erfc(-z * inv_sqrt2);
+}
+
+double los_p_gt_0(double rating_diff, double error_a, double error_b) {
+    const double sd = std::sqrt(error_a * error_a + error_b * error_b);
+    if (sd <= 0.0) {
+        return rating_diff > 0.0 ? 1.0 : (rating_diff < 0.0 ? 0.0 : 0.5);
+    }
+    return normal_cdf(rating_diff / sd);
 }
 }
 
@@ -112,7 +127,28 @@ void print_los_matrix(const RatingResult& result) {
         return name.substr(0, name_width - 2) + "…";
     };
 
-    std::cout << "\nLOS matrix (row is probability to beat column, %)\n";
+    std::cout << "\nLOS matrix (P(Elo_row > Elo_col), %)\n";
+    std::cout << std::setw(name_width) << "";
+    for (std::size_t j = 0; j < n; ++j) {
+        std::cout << std::setw(cell_width) << abbrev(result.players[j].name);
+    }
+    std::cout << "\n";
+
+    for (std::size_t i = 0; i < n; ++i) {
+        std::cout << std::setw(name_width) << abbrev(result.players[i].name);
+        for (std::size_t j = 0; j < n; ++j) {
+            if (i == j) {
+                std::cout << std::setw(cell_width) << "--";
+            } else {
+                const double diff = result.players[i].rating - result.players[j].rating;
+                const double p = los_p_gt_0(diff, result.players[i].error, result.players[j].error);
+                std::cout << std::setw(cell_width) << (p * 100.0);
+            }
+        }
+        std::cout << "\n";
+    }
+
+    std::cout << "\nEloLogit matrix (10^(-diff/200) logistic, %, BayesElo-style)\n";
     std::cout << std::setw(name_width) << "";
     for (std::size_t j = 0; j < n; ++j) {
         std::cout << std::setw(cell_width) << abbrev(result.players[j].name);
@@ -168,7 +204,33 @@ void print_los_matrix_markdown(const RatingResult& result) {
         }
     }
 
-    std::cout << "\n| LOS% |";
+    std::cout << "\n| LOS% (P(Elo_row > Elo_col)) |";
+    for (std::size_t j = 0; j < n; ++j) {
+        std::cout << " " << result.players[j].name << " |";
+    }
+    std::cout << "\n| :--- |";
+    for (std::size_t j = 0; j < n; ++j) {
+        (void)j;
+        std::cout << " ---: |";
+    }
+    std::cout << "\n";
+
+    std::cout << std::fixed << std::setprecision(1);
+    for (std::size_t i = 0; i < n; ++i) {
+        std::cout << "| " << result.players[i].name << " |";
+        for (std::size_t j = 0; j < n; ++j) {
+            if (i == j) {
+                std::cout << " -- |";
+            } else {
+                const double diff = result.players[i].rating - result.players[j].rating;
+                const double p = los_p_gt_0(diff, result.players[i].error, result.players[j].error);
+                std::cout << " " << (p * 100.0) << " |";
+            }
+        }
+        std::cout << "\n";
+    }
+
+    std::cout << "\n| EloLogit% (10^(-diff/200) logistic) |";
     for (std::size_t j = 0; j < n; ++j) {
         std::cout << " " << result.players[j].name << " |";
     }
