@@ -33,6 +33,8 @@ struct CliOptions {
     std::optional<std::size_t> max_games;
     bool keep_moves{false};
     std::optional<std::size_t> max_bytes;
+    bool markdown{false};
+    std::size_t planned_games{0};
 };
 
 namespace {
@@ -91,6 +93,8 @@ void print_help() {
         << "  --threads <n>               Number of worker threads (0=auto, default: hardware concurrency)\n"
         << "  --csv <path>                Write ratings table as CSV\n"
         << "  --json <path>               Write ratings table as JSON\n"
+        << "  --markdown                  Print tables as Markdown\n"
+        << "  --planned-games <n>         Print N as the planned game count (e.g. 457/1000)\n"
         << "  --pgn-dir <path>            Recursively add all .pgn files under directory\n"
         << "  --max-games <n>             Stop after N accepted games\n"
         << "  --max-size <bytes|k|m|g>    Soft cap on internal memory estimate (k=KiB, m=MiB, g=GiB)\n"
@@ -309,6 +313,18 @@ CliOptions parse_cli(int argc, char** argv) {
                 std::exit(1);
             }
             options.json = argv[++i];
+            continue;
+        }
+        if (arg == "--markdown") {
+            options.markdown = true;
+            continue;
+        }
+        if (arg == "--planned-games") {
+            std::size_t v = 0;
+            if (!parse_size_t_arg(arg, i, v)) {
+                std::exit(1);
+            }
+            options.planned_games = v;
             continue;
         }
         if (arg == "--pgn-dir") {
@@ -546,7 +562,13 @@ int main(int argc, char** argv) {
         ratings = solver.solve(games);
     }
 
-    print_ratings(ratings);
+    if (options.markdown) {
+        print_ratings_markdown(ratings, options.planned_games);
+        print_los_matrix_markdown(ratings);
+    } else {
+        print_ratings(ratings, options.planned_games);
+        print_los_matrix(ratings);
+    }
     if (max_reached.load(std::memory_order_relaxed)) {
         std::cerr << "Reached limit (--max-games or --max-size); remaining parsed games were discarded.\n";
     }
