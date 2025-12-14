@@ -26,6 +26,7 @@ add_library(bayeselo_lib
     src/parser/pgn_parser.cpp
     src/output/terminal_output.cpp
     src/output/export_writer.cpp
+    src/rating/fastchess_stats.cpp
     src/rating/bayeselo_solver.cpp
 )
 
@@ -62,3 +63,7 @@ set_target_properties(bench_parser PROPERTIES EXCLUDE_FROM_ALL TRUE) # Build via
 add_executable(memory_limit_tests tests/memory_limit_tests.cpp)
 target_link_libraries(memory_limit_tests PRIVATE bayeselo_lib)
 add_test(NAME memory_limit_tests COMMAND memory_limit_tests)
+
+add_executable(fastchess_stats_tests tests/fastchess_stats_tests.cpp)
+target_link_libraries(fastchess_stats_tests PRIVATE bayeselo_lib)
+add_test(NAME fastchess_stats_tests COMMAND fastchess_stats_tests)

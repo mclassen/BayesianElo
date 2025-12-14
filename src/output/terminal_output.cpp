@@ -255,4 +255,58 @@ void print_los_matrix_markdown(const RatingResult& result) {
     }
 }
 
+void print_fastchess_head_to_head(const FastchessHeadToHeadStats& stats, std::size_t planned_games) {
+    std::cout << "Games: " << stats.games;
+    if (planned_games != 0) {
+        std::cout << " / " << planned_games;
+    }
+    std::cout << "\n";
+
+    std::cout << "Players: " << stats.player_a << " vs " << stats.player_b << "\n";
+    std::cout << "W-D-L : " << stats.wins << "-" << stats.draws << "-" << stats.losses << "\n";
+
+    auto old_flags = std::cout.flags();
+    auto old_precision = std::cout.precision();
+    std::cout << std::fixed << std::setprecision(2);
+    std::cout << "Score : " << stats.score_pct << "%  (Draw " << stats.draw_pct << "%)\n";
+    std::cout << "Elo   : " << stats.elo << " +/- " << stats.elo_error_95 << " (95% CI)\n";
+    std::cout << "nElo  : " << stats.nelo << " +/- " << stats.nelo_error_95 << " (95% CI)\n";
+    std::cout << std::setprecision(2) << "LOS   : " << (stats.los * 100.0) << "%\n";
+    std::cout.flags(old_flags);
+    std::cout.precision(old_precision);
+}
+
+void print_fastchess_head_to_head_markdown(const FastchessHeadToHeadStats& stats, std::size_t planned_games) {
+    std::cout << "Games: " << stats.games;
+    if (planned_games != 0) {
+        std::cout << " / " << planned_games;
+    }
+    std::cout << "\n\n";
+
+    std::cout << "| Player A | Player B | Elo(A-B) | +/- (95%) | nElo | +/- (95%) | LOS% | Games | W | D | L | Score% | Draw% |\n";
+    std::cout << "| :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n";
+
+    auto old_flags = std::cout.flags();
+    auto old_precision = std::cout.precision();
+    std::cout << std::fixed;
+    std::cout << std::setprecision(2);
+    std::cout << "| " << stats.player_a
+              << " | " << stats.player_b
+              << " | " << stats.elo
+              << " | " << stats.elo_error_95
+              << " | " << stats.nelo
+              << " | " << stats.nelo_error_95
+              << " | " << (stats.los * 100.0)
+              << " | " << stats.games
+              << " | " << stats.wins
+              << " | " << stats.draws
+              << " | " << stats.losses
+              << " | " << stats.score_pct
+              << " | " << stats.draw_pct
+              << " |\n";
+
+    std::cout.flags(old_flags);
+    std::cout.precision(old_precision);
+}
+
 } // namespace bayeselo

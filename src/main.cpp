@@ -20,6 +20,7 @@
 #include <optional>
 #include <thread>
 #include <cctype>
+#include <unordered_map>
 #include <vector>
 
 using namespace bayeselo;
@@ -35,6 +36,8 @@ struct CliOptions {
     std::optional<std::size_t> max_bytes;
     bool markdown{false};
     std::size_t planned_games{0};
+    enum class OutputStyle { Auto, Fastchess, BayesElo };
+    OutputStyle style{OutputStyle::Auto};
 };
 
 namespace {
@@ -94,6 +97,8 @@ void print_help() {
         << "  --csv <path>                Write ratings table as CSV\n"
         << "  --json <path>               Write ratings table as JSON\n"
         << "  --markdown                  Print tables as Markdown\n"
+        << "  --fastchess                 Use fastchess-style 1v1 stats (default when exactly 2 players)\n"
+        << "  --bayeselo                  Use BayesElo-style multi-player ratings/LOS matrices\n"
         << "  --planned-games <n>         Print N as the planned game count (e.g. 457/1000)\n"
         << "  --pgn-dir <path>            Recursively add all .pgn files under directory\n"
         << "  --max-games <n>             Stop after N accepted games\n"
@@ -317,6 +322,14 @@ CliOptions parse_cli(int argc, char** argv) {
         }
         if (arg == "--markdown") {
             options.markdown = true;
+            continue;
+        }
+        if (arg == "--fastchess") {
+            options.style = CliOptions::OutputStyle::Fastchess;
+            continue;
+        }
+        if (arg == "--bayeselo") {
+            options.style = CliOptions::OutputStyle::BayesElo;
             continue;
         }
         if (arg == "--planned-games") {
@@ -562,12 +575,67 @@ int main(int argc, char** argv) {
         ratings = solver.solve(games);
     }
 
-    if (options.markdown) {
-        print_ratings_markdown(ratings, options.planned_games);
-        print_los_matrix_markdown(ratings);
+    const auto selected_style = [&]() -> CliOptions::OutputStyle {
+        if (options.style != CliOptions::OutputStyle::Auto) {
+            return options.style;
+        }
+        const std::size_t player_count = use_pairings ? player_names.size() : ratings.players.size();
+        return player_count == 2 ? CliOptions::OutputStyle::Fastchess : CliOptions::OutputStyle::BayesElo;
+    }();
+
+    if (selected_style == CliOptions::OutputStyle::Fastchess) {
+        std::vector<Pairing> h2h_pairings;
+        std::vector<std::string> h2h_names;
+        if (use_pairings) {
+            h2h_pairings = pairings;
+            h2h_names = player_names;
+        } else {
+            // Build a strict 1v1 pairing list from games so the results match fastchess output.
+            std::unordered_map<std::string, std::size_t> idx;
+            for (const auto& g : games) {
+                if (g.result.outcome == GameResult::Outcome::Unknown) {
+                    continue;
+                }
+                auto ensure = [&](const std::string& name) {
+                    auto it = idx.find(name);
+                    if (it != idx.end()) {
+                        return it->second;
+                    }
+                    std::size_t next = h2h_names.size();
+                    idx[name] = next;
+                    h2h_names.push_back(name);
+                    return next;
+                };
+                std::size_t w = ensure(g.meta.white);
+                std::size_t b = ensure(g.meta.black);
+                double score = 0.5;
+                if (g.result.outcome == GameResult::Outcome::WhiteWin) {
+                    score = 1.0;
+                } else if (g.result.outcome == GameResult::Outcome::BlackWin) {
+                    score = 0.0;
+                }
+                h2h_pairings.push_back(Pairing{w, b, score});
+            }
+        }
+
+        auto stats = compute_fastchess_head_to_head(h2h_pairings, h2h_names, 0, 1);
+        if (!stats) {
+            std::cerr << "fastchess-style output requires a strict 1v1 PGN (exactly 2 players, only games between them)\n";
+            return 1;
+        }
+        if (options.markdown) {
+            print_fastchess_head_to_head_markdown(*stats, options.planned_games);
+        } else {
+            print_fastchess_head_to_head(*stats, options.planned_games);
+        }
     } else {
-        print_ratings(ratings, options.planned_games);
-        print_los_matrix(ratings);
+        if (options.markdown) {
+            print_ratings_markdown(ratings, options.planned_games);
+            print_los_matrix_markdown(ratings);
+        } else {
+            print_ratings(ratings, options.planned_games);
+            print_los_matrix(ratings);
+        }
     }
     if (max_reached.load(std::memory_order_relaxed)) {
         std::cerr << "Reached limit (--max-games or --max-size); remaining parsed games were discarded.\n";
